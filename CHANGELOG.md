@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.7.0] - 2026-02-27
+
+### Added
+- `git-who badge` — Generate shields.io-style SVG badges for README (bus factor, health grade)
+- `git-who onboard` — Generate new contributor onboarding guides (key contacts, key files, active areas)
+- GitHub issue templates (bug report, feature request)
+- Badge supports SVG, Markdown, and HTML output formats
+- Onboard supports terminal, JSON, and Markdown output
+
 ## v0.5.0
 
 ### New Commands

@@ -71,7 +71,7 @@ class TestCLI:
         runner = CliRunner()
         result = runner.invoke(main, ["--version"])
         assert result.exit_code == 0
-        assert "0.6.0" in result.output
+        assert "0.7.0" in result.output
 
     def test_hotspots_command(self, git_repo):
         runner = CliRunner()
@@ -345,3 +345,68 @@ class TestHtmlReport:
         html_output = generate_html_report(analysis)
         assert "<!DOCTYPE html>" in html_output
         assert "</html>" in html_output
+
+
+class TestBadge:
+    """Tests for the badge command."""
+
+    def test_badge_svg_output(self, git_repo):
+        """Badge should produce valid SVG."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["--path", str(git_repo), "badge"])
+        assert result.exit_code == 0
+        assert "<svg" in result.output
+        assert "bus factor" in result.output
+
+    def test_badge_health_type(self, git_repo):
+        """Health badge should include grade."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["--path", str(git_repo), "badge", "--type", "health"])
+        assert result.exit_code == 0
+        assert "<svg" in result.output
+        assert "repo health" in result.output
+
+    def test_badge_save_to_file(self, git_repo, tmp_path):
+        """Badge should save to file."""
+        runner = CliRunner()
+        outfile = tmp_path / "badge.svg"
+        result = runner.invoke(main, ["--path", str(git_repo), "badge", "-o", str(outfile)])
+        assert result.exit_code == 0
+        assert outfile.exists()
+        assert "<svg" in outfile.read_text()
+
+    def test_badge_markdown_format(self, git_repo):
+        """Badge with markdown format."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["--path", str(git_repo), "badge", "--format", "markdown"])
+        assert result.exit_code == 0
+        assert "<svg" in result.output
+
+
+class TestOnboard:
+    """Tests for the onboard command."""
+
+    def test_onboard_terminal(self, git_repo):
+        """Onboard should produce terminal output."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["--path", str(git_repo), "onboard"])
+        assert result.exit_code == 0
+        assert "Key Contacts" in result.output or "Onboarding" in result.output
+
+    def test_onboard_json(self, git_repo):
+        """Onboard JSON should have expected keys."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["--path", str(git_repo), "--json", "onboard"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert "key_contacts" in data
+        assert "key_files" in data
+        assert "active_areas" in data
+
+    def test_onboard_markdown(self, git_repo):
+        """Onboard markdown should be valid."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["--path", str(git_repo), "--markdown", "onboard"])
+        assert result.exit_code == 0
+        assert "# Onboarding Guide" in result.output
+        assert "Key Contacts" in result.output

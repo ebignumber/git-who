@@ -685,3 +685,236 @@ def report(ctx: click.Context, output: str | None, stale_days: int, open_browser
     if open_browser:
         import webbrowser
         webbrowser.open(f"file://{Path(output).resolve()}")
+
+
+@main.command()
+@click.option("--type", "badge_type", type=click.Choice(["bus-factor", "health"]), default="bus-factor", help="Badge type.")
+@click.option("--output", "-o", default=None, help="Output SVG file (default: stdout).")
+@click.option("--format", "fmt", type=click.Choice(["svg", "markdown", "html"]), default="svg", help="Output format.")
+@click.pass_context
+def badge(ctx: click.Context, badge_type: str, output: str | None, fmt: str) -> None:
+    """Generate a shields.io-style SVG badge.
+
+    Creates a badge showing bus factor or health grade. Embed in
+    your README or documentation to show code health at a glance.
+
+    \b
+    Examples:
+        git-who badge                        # SVG to stdout
+        git-who badge -o badge.svg           # Save to file
+        git-who badge --format markdown      # Markdown image link
+        git-who badge --type health          # Health grade badge
+    """
+    from .badge import generate_badge_svg, generate_health_badge_svg
+
+    path = ctx.obj["path"]
+    since = ctx.obj["since"]
+    ignore = ctx.obj["ignore"]
+    console = Console(stderr=True)
+
+    try:
+        analysis = analyze_repo(path, since=since, ignore=ignore)
+    except RuntimeError as e:
+        console.print(f"[red]Error:[/] {e}")
+        sys.exit(1)
+
+    if analysis.total_files == 0:
+        console.print("[yellow]No files found in git history.[/]")
+        sys.exit(0)
+
+    if badge_type == "health":
+        summary_result = compute_summary(analysis)
+        svg = generate_health_badge_svg(
+            score=summary_result.health_score,
+            grade=summary_result.health_grade,
+        )
+    else:
+        svg = generate_badge_svg(value=str(analysis.bus_factor))
+
+    if fmt == "markdown":
+        if output:
+            with open(output, "w") as f:
+                f.write(svg)
+            print(f"![bus factor](/{output})")
+        else:
+            print("<!-- Save the SVG output to a file, then reference it: -->")
+            print("<!-- git-who badge -o .github/bus-factor.svg -->")
+            print("<!-- ![bus factor](.github/bus-factor.svg) -->")
+            print(svg)
+    elif fmt == "html":
+        if output:
+            with open(output, "w") as f:
+                f.write(svg)
+            print(f'<img src="{output}" alt="bus factor badge">')
+        else:
+            print(svg)
+    else:
+        if output:
+            with open(output, "w") as f:
+                f.write(svg)
+            console.print(f"[green]✓[/] Badge saved to [bold]{output}[/]")
+        else:
+            print(svg)
+
+
+@main.command()
+@click.option("--top", "-n", default=5, help="Number of key files to highlight.")
+@click.pass_context
+def onboard(ctx: click.Context, top: int) -> None:
+    """Generate a new contributor onboarding guide.
+
+    Creates a guide showing: key files to read first, who to ask
+    about what, and the most active areas of the codebase. Perfect
+    for team wikis, CONTRIBUTING.md, or onboarding docs.
+
+    \b
+    Examples:
+        git-who onboard                     # Terminal output
+        git-who --markdown onboard          # Markdown for docs
+        git-who --json onboard              # JSON for tooling
+    """
+    path = ctx.obj["path"]
+    as_json = ctx.obj["json"]
+    as_md = ctx.obj["markdown"]
+    since = ctx.obj["since"]
+    ignore = ctx.obj["ignore"]
+    console = Console(stderr=True) if as_json or as_md else Console()
+
+    try:
+        analysis = analyze_repo(path, since=since, ignore=ignore)
+    except RuntimeError as e:
+        console.print(f"[red]Error:[/] {e}")
+        sys.exit(1)
+
+    if analysis.total_files == 0:
+        console.print("[yellow]No files found in git history.[/]")
+        sys.exit(0)
+
+    # Find key experts (people to ask)
+    experts = sorted(analysis.authors.values(), key=lambda a: a.avg_score, reverse=True)
+
+    # Find most-owned files per top expert (key files to understand)
+    key_files: list[dict] = []
+    for fo in sorted(analysis.files.values(), key=lambda f: f.experts[0].score if f.experts else 0, reverse=True)[:top]:
+        if fo.experts:
+            key_files.append({
+                "file": fo.file,
+                "expert": fo.experts[0].author,
+                "score": round(fo.experts[0].score, 1),
+                "bus_factor": fo.bus_factor,
+                "commits": fo.experts[0].commits,
+            })
+
+    # Find most active directories
+    dir_list = aggregate_directories(analysis, depth=1)
+    active_dirs = sorted(dir_list, key=lambda d: sum(s for _, s in d.experts), reverse=True)[:5]
+
+    # Hotspots to watch out for
+    hotspots = find_hotspots(analysis, min_commits=3)[:3]
+
+    if as_json:
+        result = {
+            "key_contacts": [
+                {"name": e.author, "files_owned": e.files_owned, "avg_score": round(e.avg_score, 1)}
+                for e in experts[:5]
+            ],
+            "key_files": key_files,
+            "active_areas": [
+                {"directory": d.directory, "files": d.file_count, "bus_factor": d.bus_factor}
+                for d in active_dirs
+            ],
+            "watch_out": [
+                {"file": h.file, "reason": "High churn, low bus factor", "expert": h.sole_expert}
+                for h in hotspots
+            ],
+        }
+        print(json.dumps(result, indent=2))
+    elif as_md:
+        lines = [
+            "# Onboarding Guide",
+            "",
+            f"*Generated by [git-who](https://github.com/trinarymage/git-who) — {analysis.total_files} files, {analysis.total_authors} contributors*",
+            "",
+            "## Key Contacts",
+            "",
+            "| Person | Files Owned | Expertise |",
+            "|--------|-------------|-----------|",
+        ]
+        for e in experts[:5]:
+            lines.append(f"| {e.author} | {e.files_owned} | {e.avg_score:.1f} |")
+        lines.extend([
+            "",
+            "## Key Files to Understand",
+            "",
+            "| File | Expert | Bus Factor |",
+            "|------|--------|------------|",
+        ])
+        for kf in key_files:
+            risk = " ⚠️" if kf["bus_factor"] == 1 else ""
+            lines.append(f"| `{kf['file']}` | {kf['expert']} | {kf['bus_factor']}{risk} |")
+        lines.extend([
+            "",
+            "## Active Areas",
+            "",
+            "| Directory | Files | Bus Factor |",
+            "|-----------|-------|------------|",
+        ])
+        for d in active_dirs:
+            lines.append(f"| `{d.directory}/` | {d.file_count} | {d.bus_factor} |")
+        if hotspots:
+            lines.extend([
+                "",
+                "## Watch Out For",
+                "",
+                "These files change frequently but are understood by very few people:",
+                "",
+            ])
+            for h in hotspots:
+                lines.append(f"- **`{h.file}`** — {h.sole_expert} is the sole expert ({h.commits} commits)")
+        print("\n".join(lines))
+    else:
+        from rich.table import Table
+        from rich.panel import Panel
+
+        console.print()
+        console.print(Panel.fit(
+            f"[bold]Onboarding Guide[/]\n"
+            f"{analysis.total_files} files · {analysis.total_authors} contributors · bus factor {analysis.bus_factor}",
+            title="git-who onboard",
+        ))
+
+        console.print("\n[bold]👋 Key Contacts[/] — ask them about the codebase\n")
+        t = Table()
+        t.add_column("#", style="dim")
+        t.add_column("Person")
+        t.add_column("Files Owned", justify="right")
+        t.add_column("Expertise", justify="right")
+        for i, e in enumerate(experts[:5], 1):
+            t.add_row(str(i), e.author, str(e.files_owned), f"{e.avg_score:.1f}")
+        console.print(t)
+
+        console.print(f"\n[bold]📂 Key Files[/] — start reading here\n")
+        t = Table()
+        t.add_column("#", style="dim")
+        t.add_column("File")
+        t.add_column("Expert")
+        t.add_column("Bus Factor", justify="right")
+        for i, kf in enumerate(key_files, 1):
+            bf_style = "red" if kf["bus_factor"] == 1 else ""
+            t.add_row(str(i), kf["file"], kf["expert"], f"[{bf_style}]{kf['bus_factor']}[/]")
+        console.print(t)
+
+        console.print(f"\n[bold]🏗️  Active Areas[/]\n")
+        t = Table()
+        t.add_column("Directory")
+        t.add_column("Files", justify="right")
+        t.add_column("Bus Factor", justify="right")
+        for d in active_dirs:
+            t.add_row(f"{d.directory}/", str(d.file_count), str(d.bus_factor))
+        console.print(t)
+
+        if hotspots:
+            console.print(f"\n[bold]⚠️  Watch Out For[/] — risky high-churn files\n")
+            for h in hotspots:
+                console.print(f"  [red]•[/] [bold]{h.file}[/] — {h.sole_expert} is sole expert ({h.commits} commits)")
+        console.print()

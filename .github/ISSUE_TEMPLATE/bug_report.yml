@@ -1,0 +1,39 @@
+name: Bug Report
+description: Report a bug in git-who
+labels: [bug]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened? What did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this?
+      value: |
+        1. Run `git-who ...`
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: git-who version
+      description: Run `git-who --version`
+    validations:
+      required: true
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      description: Run `python --version`
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating System

@@ -83,6 +83,8 @@ git-who review --base main     # Suggest reviewers for current changes
 git-who --markdown             # Markdown report for PRs/docs
 git-who report                 # Beautiful HTML report with charts
 git-who --html > report.html   # HTML output to stdout
+git-who badge -o badge.svg       # SVG badge for your README
+git-who onboard                  # New contributor onboarding guide
 git-who --json                 # Machine-readable JSON output
 ```
 
@@ -278,6 +280,43 @@ $ git-who teams
 └───┴──────────────────────┴─────────┴───────┴─────────────┘
 ```
 
+### New Contributor Onboarding
+
+Generate a guide for new team members — who to ask, what to read first:
+
+```
+$ git-who onboard
+
+╭──────────────────── git-who onboard ─────────────────────╮
+│ Onboarding Guide                                          │
+│ 142 files · 12 contributors · bus factor 3                │
+╰───────────────────────────────────────────────────────────╯
+
+👋 Key Contacts — ask them about the codebase
+┌───┬──────────────┬─────────────┬───────────┐
+│ # │ Person       │ Files Owned │ Expertise │
+├───┼──────────────┼─────────────┼───────────┤
+│ 1 │ Alice        │          52 │      18.3 │
+│ 2 │ Bob          │          38 │      14.7 │
+│ 3 │ Charlie      │          31 │      11.2 │
+└───┴──────────────┴─────────────┴───────────┘
+
+📂 Key Files — start reading here
+┌───┬──────────────────────────┬──────────┬────────────┐
+│ # │ File                     │ Expert   │ Bus Factor │
+├───┼──────────────────────────┼──────────┼────────────┤
+│ 1 │ src/payment/billing.py   │ Alice    │     1      │
+│ 2 │ src/api/middleware.py    │ Alice    │     2      │
+│ 3 │ src/auth/oauth.py        │ Bob      │     1      │
+└───┴──────────────────────────┴──────────┴────────────┘
+```
+
+Export as Markdown for your wiki:
+
+```bash
+git-who --markdown onboard > ONBOARDING.md
+```
+
 ### Reviewer Suggestions
 
 ```
@@ -371,6 +410,23 @@ Keep CODEOWNERS in sync by running it in CI:
     git-who codeowners > .github/CODEOWNERS
     git diff --exit-code .github/CODEOWNERS || echo "::warning::CODEOWNERS is out of date"
 ```
+
+### Badges for Your README
+
+Show your repo's bus factor or health grade with a shields.io-style badge:
+
+```bash
+git-who badge -o .github/bus-factor.svg    # Generate SVG badge
+git-who badge --type health -o health.svg   # Health grade badge
+```
+
+Then add to your README:
+
+```markdown
+![bus factor](.github/bus-factor.svg)
+```
+
+Color-coded: 🟢 green (4+), 🟡 yellow (2-3), 🔴 red (1).
 
 ### HTML Reports
 
@@ -529,6 +585,8 @@ If you prefer scripting directly:
 | Trend analysis | Yes (over time) | No | No |
 | Pre-commit hook | Yes | No | No |
 | HTML reports with charts | Yes | No | No |
+| SVG badges for README | Yes | No | No |
+| Onboarding guide generator | Yes | No | No |
 | Zero config | Yes | Yes | Yes |
 
 ## Pre-commit Hook
@@ -539,7 +597,7 @@ Use git-who as a [pre-commit](https://pre-commit.com/) hook to monitor bus facto
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/trinarymage/git-who
-    rev: v0.6.0
+    rev: v0.7.0
     hooks:
       - id: git-who-bus-factor
 ```
