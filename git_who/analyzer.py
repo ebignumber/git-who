@@ -11,6 +11,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
+def _parse_iso_date(s: str) -> datetime:
+    """Parse ISO 8601 date, handling 'Z' suffix for Python < 3.11."""
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    return datetime.fromisoformat(s)
+
+
 @dataclass
 class FileExpertise:
     """Expertise data for a single author on a single file."""
@@ -151,7 +158,7 @@ def parse_git_log(
             if len(parts) >= 4:
                 current_author = parts[1]
                 current_email = parts[2]
-                current_date = datetime.fromisoformat(parts[3])
+                current_date = _parse_iso_date(parts[3])
                 author_emails[current_author] = current_email
         else:
             # numstat line: added\tdeleted\tfilepath
