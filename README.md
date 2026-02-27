@@ -56,11 +56,13 @@ git-who answers these in seconds. Zero config. Works on any git repository.
 
 ## Installation
 
+Install from source (PyPI coming soon):
+
 ```bash
-pip install git-who
+pip install git+https://github.com/trinarymage/git-who.git
 ```
 
-Or install from source:
+Or clone and install for development:
 
 ```bash
 git clone https://github.com/trinarymage/git-who.git
@@ -615,7 +617,7 @@ Use git-who as a [pre-commit](https://pre-commit.com/) hook to monitor bus facto
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/trinarymage/git-who
-    rev: v0.7.0
+    rev: v0.8.0
     hooks:
       - id: git-who-bus-factor
 ```
