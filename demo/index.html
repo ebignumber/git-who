@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>git-who — Live Demos</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0d1117; color: #c9d1d9; min-height: 100vh; }
+  .container { max-width: 800px; margin: 0 auto; padding: 60px 20px; }
+  h1 { font-size: 2.5em; margin-bottom: 8px; color: #f0f6fc; }
+  .tagline { font-size: 1.2em; color: #8b949e; margin-bottom: 40px; }
+  .card { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 24px; margin-bottom: 20px; transition: border-color 0.2s; }
+  .card:hover { border-color: #58a6ff; }
+  .card h2 { font-size: 1.3em; margin-bottom: 8px; color: #f0f6fc; }
+  .card p { color: #8b949e; margin-bottom: 16px; line-height: 1.5; }
+  .card a { display: inline-block; background: #238636; color: #fff; padding: 8px 20px; border-radius: 6px; text-decoration: none; font-weight: 600; margin-right: 10px; }
+  .card a:hover { background: #2ea043; }
+  .card a.secondary { background: transparent; border: 1px solid #30363d; color: #c9d1d9; }
+  .card a.secondary:hover { border-color: #58a6ff; color: #58a6ff; }
+  .repo-link { display: inline-block; margin-top: 30px; color: #58a6ff; text-decoration: none; font-size: 1.1em; }
+  .repo-link:hover { text-decoration: underline; }
+  .badge { display: inline-block; background: #30363d; color: #c9d1d9; padding: 2px 8px; border-radius: 4px; font-size: 0.85em; margin-left: 8px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>git-who</h1>
+  <p class="tagline">Find out who really knows your code.</p>
+
+  <div class="card">
+    <h2>Interactive Ownership Map <span class="badge">Flask</span></h2>
+    <p>Explore Flask's codebase as an interactive treemap. Files are sized by activity and colored by bus factor risk. Click to zoom into directories.</p>
+    <a href="flask-map.html">View Map</a>
+  </div>
+
+  <div class="card">
+    <h2>Health Report <span class="badge">Flask</span></h2>
+    <p>A complete health report for the Flask project — health grade, expert leaderboard, hotspot analysis, bus factor distribution, and more.</p>
+    <a href="flask-report.html">View Report</a>
+  </div>
+
+  <div class="card">
+    <h2>Try it on your own repo</h2>
+    <p>Install git-who and run it on any git repository. Zero config — just run <code style="background:#30363d;padding:2px 6px;border-radius:4px;">git-who</code> in your project.</p>
+    <a href="https://github.com/trinarymage/git-who#installation" class="secondary">Installation Guide</a>
+  </div>
+
+  <a class="repo-link" href="https://github.com/trinarymage/git-who">→ View on GitHub</a>
+</div>
+</body>
+</html>
