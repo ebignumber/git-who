@@ -71,7 +71,7 @@ class TestCLI:
         runner = CliRunner()
         result = runner.invoke(main, ["--version"])
         assert result.exit_code == 0
-        assert "0.3.0" in result.output
+        assert "0.4.0" in result.output
 
     def test_hotspots_command(self, git_repo):
         runner = CliRunner()
@@ -185,3 +185,44 @@ class TestCLI:
         runner = CliRunner()
         result = runner.invoke(main, ["--path", str(tmp_path)])
         assert result.exit_code != 0
+
+
+def test_churn_command(git_repo):
+    """Test the churn CLI command."""
+    runner = CliRunner()
+    result = runner.invoke(main, ["--path", git_repo, "churn"])
+    assert result.exit_code == 0
+    assert "Churn" in result.output or "file" in result.output.lower()
+
+
+def test_churn_json(git_repo):
+    """Test churn command with JSON output."""
+    runner = CliRunner()
+    result = runner.invoke(main, ["--path", git_repo, "--json", "churn"])
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert "churn" in data
+
+
+def test_stale_command(git_repo):
+    """Test the stale CLI command."""
+    runner = CliRunner()
+    result = runner.invoke(main, ["--path", git_repo, "stale"])
+    assert result.exit_code == 0
+
+
+def test_stale_json(git_repo):
+    """Test stale command with JSON output."""
+    runner = CliRunner()
+    result = runner.invoke(main, ["--path", git_repo, "--json", "stale"])
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert "stale_files" in data
+    assert "stale_days_threshold" in data
+
+
+def test_stale_custom_days(git_repo):
+    """Test stale command with custom days threshold."""
+    runner = CliRunner()
+    result = runner.invoke(main, ["--path", git_repo, "stale", "--days", "30"])
+    assert result.exit_code == 0

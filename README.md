@@ -73,6 +73,8 @@ cd git-who && pip install -e .
 git-who                        # Full repository overview
 git-who hotspots               # High churn + low bus factor = risk
 git-who bus-factor             # Detailed bus factor analysis
+git-who churn                  # Most frequently changed files
+git-who stale                  # Files with no recent activity
 git-who codeowners             # Generate CODEOWNERS from expertise
 git-who teams                  # Expertise by team (email domain)
 git-who dirs                   # Expertise by directory
@@ -146,6 +148,44 @@ $ git-who hotspots
 │ src/auth/oauth.py        │      31 │ Bob          │  19.1 │ ██████████     │
 │ src/api/middleware.py    │      22 │ Alice        │  15.4 │ ███████        │
 └──────────────────────────┴─────────┴──────────────┴───────┴───────────────┘
+```
+
+### File Churn Rankings
+
+See which files change most often — high churn files are where knowledge concentration matters most:
+
+```
+$ git-who churn
+
+┌───────────────────────────────────────────────────────┐
+│ 142 file(s) analyzed — showing the most actively changed files   │
+└───────────────────────────────────────────────────────┘
+┌───┬──────────────────────────┬─────────┬────────┬─────────┬───────────┐
+│ # │ File                     │ Commits │ Lines  │ Authors │ Bus Factor│
+├───┼──────────────────────────┼─────────┼────────┼─────────┼───────────┤
+│ 1 │ src/payment/billing.py   │      47 │   2340 │       2 │     1     │
+│ 2 │ src/api/middleware.py    │      31 │   1580 │       3 │     2     │
+│ 3 │ src/auth/oauth.py        │      28 │   1120 │       1 │     1     │
+└───┴──────────────────────────┴─────────┴────────┴─────────┴───────────┘
+```
+
+### Stale File Detection
+
+Find files where expertise is going cold — no recent commits means decaying knowledge:
+
+```
+$ git-who stale --days 90
+
+┌──────────────────────────────────────────────────┐
+│ 12 stale file(s) — expertise is going cold               │
+└──────────────────────────────────────────────────┘
+┌───┬──────────────────────┬────────────┬──────────────┬───────┐
+│ # │ File                 │ Days Stale │ Last Expert  │ Bus F │
+├───┼──────────────────────┼────────────┼──────────────┼───────┤
+│ 1 │ src/legacy/parser.py │        342 │ Alice        │   1   │
+│ 2 │ src/old/utils.py     │        287 │ Bob          │   1   │
+│ 3 │ docs/api.md          │        201 │ Charlie      │   2   │
+└───┴──────────────────────┴────────────┴──────────────┴───────┘
 ```
 
 ### Team Analysis
@@ -377,6 +417,8 @@ If you prefer scripting directly:
 | Expertise scoring | Weighted (recency + frequency + volume) | Line count only | N/A |
 | Bus factor | Per-file, per-directory, and repo-wide | No | No |
 | Hotspot detection | Yes (churn x bus factor) | No | No |
+| File churn rankings | Yes | No | No |
+| Stale file detection | Yes (configurable threshold) | No | No |
 | CODEOWNERS generation | Yes (from expertise data) | No | No |
 | Team analysis | Yes (by email domain) | No | No |
 | Directory aggregation | Yes | No | No |
@@ -388,6 +430,19 @@ If you prefer scripting directly:
 | JSON output | Yes | Yes | No |
 | GitHub Action | Yes (official) | No | No |
 | Zero config | Yes | Yes | Yes |
+
+## Pre-commit Hook
+
+Use git-who as a [pre-commit](https://pre-commit.com/) hook to monitor bus factor in CI:
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/trinarymage/git-who
+    rev: v0.4.0
+    hooks:
+      - id: git-who-bus-factor
+```
 
 ## Development
 

@@ -447,3 +447,87 @@ def display_json(analysis: RepoAnalysis) -> dict:
         }
 
     return result
+
+
+def display_churn(console: Console, churn_data: list, top_n: int = 20) -> None:
+    """Display file churn rankings."""
+    if not churn_data:
+        console.print("[dim]  No files found.[/]")
+        return
+
+    console.print(Panel(
+        f"[bold]{len(churn_data)} file(s)[/] analyzed — showing the most actively changed files",
+        title="File Churn Rankings",
+        subtitle="most changed files first",
+        border_style="cyan",
+    ))
+
+    max_commits = churn_data[0].total_commits if churn_data else 1
+
+    table = Table(show_header=True, expand=False)
+    table.add_column("#", justify="right", style="dim", width=3)
+    table.add_column("File", style="cyan", min_width=40)
+    table.add_column("Commits", justify="right", min_width=8)
+    table.add_column("Lines \u0394", justify="right", min_width=10)
+    table.add_column("Authors", justify="right", min_width=8)
+    table.add_column("Bus Factor", justify="center", min_width=10)
+    table.add_column("Churn", min_width=15)
+
+    for i, c in enumerate(churn_data[:top_n], 1):
+        bf_color = "red" if c.bus_factor <= 1 else "yellow" if c.bus_factor <= 2 else "green"
+        table.add_row(
+            str(i),
+            c.file,
+            str(c.total_commits),
+            str(c.total_lines_changed),
+            str(c.authors),
+            f"[{bf_color}]{c.bus_factor}[/]",
+            _score_bar(c.total_commits, max_commits, width=15),
+        )
+
+    remaining = len(churn_data) - top_n
+    if remaining > 0:
+        table.add_row("", f"... +{remaining} more files", "", "", "", "", "")
+
+    console.print(table)
+    console.print()
+
+
+def display_stale(console: Console, stale_files: list, top_n: int = 20) -> None:
+    """Display stale files — files with no recent activity."""
+    if not stale_files:
+        console.print("[bold green]  No stale files found — all files have recent activity.[/]")
+        return
+
+    console.print(Panel(
+        f"[bold yellow]{len(stale_files)} stale file(s)[/] — expertise is going cold",
+        title="Stale File Detection",
+        subtitle="no recent commits = decaying knowledge",
+        border_style="yellow",
+    ))
+
+    table = Table(show_header=True, expand=False)
+    table.add_column("#", justify="right", style="dim", width=3)
+    table.add_column("File", style="yellow", min_width=40)
+    table.add_column("Days Stale", justify="right", style="red", min_width=10)
+    table.add_column("Last Expert", style="green", min_width=20)
+    table.add_column("Score", justify="right", style="dim yellow", min_width=8)
+    table.add_column("Bus Factor", justify="center", min_width=10)
+
+    for i, s in enumerate(stale_files[:top_n], 1):
+        bf_color = "red" if s.bus_factor <= 1 else "yellow" if s.bus_factor <= 2 else "green"
+        table.add_row(
+            str(i),
+            s.file,
+            str(s.days_since_last_commit),
+            s.top_expert,
+            f"{s.expert_score:.1f}",
+            f"[{bf_color}]{s.bus_factor}[/]",
+        )
+
+    remaining = len(stale_files) - top_n
+    if remaining > 0:
+        table.add_row("", f"... +{remaining} more files", "", "", "", "")
+
+    console.print(table)
+    console.print()

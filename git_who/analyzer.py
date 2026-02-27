@@ -578,3 +578,115 @@ def aggregate_directories(
         ))
 
     return results
+
+
+@dataclass
+class FileChurn:
+    """Churn data for a single file."""
+
+    file: str
+    total_commits: int = 0
+    total_lines_changed: int = 0
+    authors: int = 0
+    first_commit: datetime | None = None
+    last_commit: datetime | None = None
+    bus_factor: int = 0
+
+
+def compute_churn(analysis: RepoAnalysis) -> list[FileChurn]:
+    """Compute file churn rankings from analysis data.
+
+    Churn = how often a file changes. High churn files are the ones
+    that get the most attention and carry the most risk if poorly
+    understood.
+
+    Returns files sorted by total commits (descending).
+    """
+    results = []
+    for filepath, ownership in analysis.files.items():
+        total_commits = sum(e.commits for e in ownership.experts)
+        total_lines = sum(e.lines_added + e.lines_deleted for e in ownership.experts)
+
+        first = None
+        last = None
+        for e in ownership.experts:
+            if e.first_commit:
+                if first is None or e.first_commit < first:
+                    first = e.first_commit
+            if e.last_commit:
+                if last is None or e.last_commit > last:
+                    last = e.last_commit
+
+        results.append(FileChurn(
+            file=filepath,
+            total_commits=total_commits,
+            total_lines_changed=total_lines,
+            authors=len(ownership.experts),
+            first_commit=first,
+            last_commit=last,
+            bus_factor=ownership.bus_factor,
+        ))
+
+    results.sort(key=lambda c: c.total_commits, reverse=True)
+    return results
+
+
+@dataclass
+class StaleFile:
+    """A file with stale expertise — no recent commits."""
+
+    file: str
+    last_commit: datetime | None
+    days_since_last_commit: int
+    top_expert: str
+    expert_score: float
+    bus_factor: int
+    total_lines_changed: int
+
+
+def find_stale_files(
+    analysis: RepoAnalysis,
+    stale_days: int = 180,
+    now: datetime | None = None,
+) -> list[StaleFile]:
+    """Find files where expertise is going stale — no recent activity.
+
+    A stale file is one where the most recent commit is older than
+    stale_days. These files represent knowledge risk: the experts'
+    familiarity is decaying, but the code may still be critical.
+
+    Returns files sorted by staleness (most stale first).
+    """
+    if now is None:
+        now = datetime.now(timezone.utc)
+
+    results = []
+    for filepath, ownership in analysis.files.items():
+        if not ownership.experts:
+            continue
+
+        # Find the most recent commit across all experts
+        last = None
+        for e in ownership.experts:
+            if e.last_commit:
+                if last is None or e.last_commit > last:
+                    last = e.last_commit
+
+        if last is None:
+            continue
+
+        days_ago = max(0, int((now - last).total_seconds() / 86400))
+        if days_ago >= stale_days:
+            total_lines = sum(e.lines_added + e.lines_deleted for e in ownership.experts)
+            results.append(StaleFile(
+                file=filepath,
+                last_commit=last,
+                days_since_last_commit=days_ago,
+                top_expert=ownership.experts[0].author,
+                expert_score=ownership.experts[0].score,
+                bus_factor=ownership.bus_factor,
+                total_lines_changed=total_lines,
+            ))
+
+    results.sort(key=lambda s: s.days_since_last_commit, reverse=True)
+    return results

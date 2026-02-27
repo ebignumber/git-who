@@ -18,6 +18,8 @@ from .analyzer import (
     aggregate_directories,
     generate_codeowners,
     format_codeowners,
+    compute_churn,
+    find_stale_files,
 )
 from .display import (
     display_overview,
@@ -29,6 +31,8 @@ from .display import (
     display_teams,
     display_json,
     format_markdown,
+    display_churn,
+    display_stale,
 )
 
 
@@ -411,3 +415,99 @@ def teams(ctx: click.Context) -> None:
         print(json.dumps({"teams": teams_data}, indent=2))
     else:
         display_teams(console, teams_data)
+
+
+@main.command()
+@click.option("--top", "-n", "top_n", default=20, help="Number of files to show.")
+@click.pass_context
+def churn(ctx: click.Context, top_n: int) -> None:
+    """Show file churn rankings — most frequently changed files.
+
+    Churn = how often a file changes. High churn files are the ones
+    that get the most attention and carry the most risk if poorly
+    understood. Combined with bus factor, this shows where knowledge
+    concentration matters most.
+
+    Example: git-who churn --top 30
+    """
+    path = ctx.obj["path"]
+    as_json = ctx.obj["json"]
+    since = ctx.obj["since"]
+    ignore = ctx.obj["ignore"]
+    console = Console(stderr=True) if as_json else Console()
+
+    try:
+        analysis = analyze_repo(path, since=since, ignore=ignore)
+    except RuntimeError as e:
+        console.print(f"[red]Error:[/] {e}")
+        sys.exit(1)
+
+    churn_data = compute_churn(analysis)
+
+    if as_json:
+        result = {
+            "churn": [
+                {
+                    "file": c.file,
+                    "total_commits": c.total_commits,
+                    "total_lines_changed": c.total_lines_changed,
+                    "authors": c.authors,
+                    "bus_factor": c.bus_factor,
+                }
+                for c in churn_data[:top_n]
+            ],
+        }
+        print(json.dumps(result, indent=2))
+    else:
+        display_churn(console, churn_data, top_n=top_n)
+
+
+@main.command()
+@click.option("--days", "-d", default=180, help="Days without commits to consider stale (default: 180).")
+@click.option("--top", "-n", "top_n", default=20, help="Number of files to show.")
+@click.pass_context
+def stale(ctx: click.Context, days: int, top_n: int) -> None:
+    """Find files with stale expertise — no recent activity.
+
+    Identifies files where the last commit was a long time ago. The
+    experts' knowledge is decaying, but the code may still be critical.
+    These are files where you should consider knowledge transfer or
+    code review.
+
+    \\b
+    Examples:
+        git-who stale                   # Files untouched for 180+ days
+        git-who stale --days 90         # More aggressive staleness threshold
+        git-who stale --days 365        # Only flag truly ancient files
+    """
+    path = ctx.obj["path"]
+    as_json = ctx.obj["json"]
+    since = ctx.obj["since"]
+    ignore = ctx.obj["ignore"]
+    console = Console(stderr=True) if as_json else Console()
+
+    try:
+        analysis = analyze_repo(path, since=since, ignore=ignore)
+    except RuntimeError as e:
+        console.print(f"[red]Error:[/] {e}")
+        sys.exit(1)
+
+    stale_files = find_stale_files(analysis, stale_days=days)
+
+    if as_json:
+        result = {
+            "stale_days_threshold": days,
+            "stale_files": [
+                {
+                    "file": s.file,
+                    "days_since_last_commit": s.days_since_last_commit,
+                    "top_expert": s.top_expert,
+                    "expert_score": round(s.expert_score, 2),
+                    "bus_factor": s.bus_factor,
+                }
+                for s in stale_files[:top_n]
+            ],
+        }
+        print(json.dumps(result, indent=2))
+    else:
+        display_stale(console, stale_files, top_n=top_n)

@@ -1,0 +1,10 @@
+- id: git-who-bus-factor
+  name: git-who bus factor check
+  description: Fail if repository bus factor drops below threshold
+  entry: git-who
+  args: ["--json"]
+  language: python
+  pass_filenames: false
+  always_run: true
+  types: [python]
+  additional_dependencies: ["git-who"]

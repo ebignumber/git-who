@@ -11,6 +11,8 @@ import pytest
 
 from git_who.analyzer import (
     FileExpertise,
+    FileOwnership,
+    RepoAnalysis,
     compute_expertise_score,
     compute_bus_factor,
     suggest_reviewers,
@@ -18,6 +20,8 @@ from git_who.analyzer import (
     parse_git_log,
     find_hotspots,
     aggregate_directories,
+    compute_churn,
+    find_stale_files,
     generate_codeowners,
     format_codeowners,
     _matches_any_pattern,
@@ -711,3 +715,169 @@ class TestCodeowners:
         analysis = analyze_repo(git_repo)
         entries = generate_codeowners(analysis, granularity="directory")
         assert len(entries) > 0
+
+
+# --- Churn tests ---
+
+class TestComputeChurn:
+    """Tests for the compute_churn function."""
+
+    def _make_analysis(self):
+        fe1 = FileExpertise(author="Alice", file="a.py", commits=10,
+            lines_added=200, lines_deleted=50, score=15.0)
+        fe2 = FileExpertise(author="Bob", file="a.py", commits=5,
+            lines_added=100, lines_deleted=20, score=8.0)
+        fe3 = FileExpertise(author="Alice", file="b.py", commits=3,
+            lines_added=50, lines_deleted=10, score=5.0)
+        return RepoAnalysis(
+            path="/tmp/test",
+            files={
+                "a.py": FileOwnership(file="a.py", experts=[fe1, fe2], bus_factor=2),
+                "b.py": FileOwnership(file="b.py", experts=[fe3], bus_factor=1),
+            },
+        )
+
+    def test_empty_analysis(self):
+        analysis = RepoAnalysis(path="/tmp/test")
+        result = compute_churn(analysis)
+        assert result == []
+
+    def test_sorted_by_commits(self):
+        analysis = self._make_analysis()
+        result = compute_churn(analysis)
+        assert len(result) == 2
+        for i in range(len(result) - 1):
+            assert result[i].total_commits >= result[i + 1].total_commits
+
+    def test_churn_data_structure(self):
+        analysis = self._make_analysis()
+        result = compute_churn(analysis)
+        for item in result:
+            assert hasattr(item, "file")
+            assert hasattr(item, "total_commits")
+            assert hasattr(item, "total_lines_changed")
+            assert hasattr(item, "authors")
+            assert hasattr(item, "bus_factor")
+            assert item.total_commits >= 0
+            assert item.total_lines_changed >= 0
+            assert item.authors >= 0
+
+    def test_churn_counts_all_authors(self):
+        analysis = self._make_analysis()
+        result = compute_churn(analysis)
+        for item in result:
+            ownership = analysis.files[item.file]
+            assert item.authors == len(ownership.experts)
+
+    def test_churn_sums_commits(self):
+        analysis = self._make_analysis()
+        result = compute_churn(analysis)
+        for item in result:
+            ownership = analysis.files[item.file]
+            expected_commits = sum(e.commits for e in ownership.experts)
+            assert item.total_commits == expected_commits
+
+
+# --- Stale file tests ---
+
+class TestFindStaleFiles:
+    """Tests for the find_stale_files function."""
+
+    def test_empty_analysis(self):
+        analysis = RepoAnalysis(path="/tmp/test")
+        result = find_stale_files(analysis)
+        assert result == []
+
+    def test_no_stale_files_with_recent_commits(self):
+        now = datetime(2024, 6, 1, tzinfo=timezone.utc)
+        recent = datetime(2024, 5, 15, tzinfo=timezone.utc)
+        fe = FileExpertise(
+            author="Alice", file="a.py", commits=5,
+            lines_added=100, lines_deleted=10,
+            first_commit=recent, last_commit=recent, score=10.0,
+        )
+        analysis = RepoAnalysis(
+            path="/tmp/test",
+            files={"a.py": FileOwnership(file="a.py", experts=[fe], bus_factor=1)},
+        )
+        result = find_stale_files(analysis, stale_days=180, now=now)
+        assert len(result) == 0
+
+    def test_finds_stale_files(self):
+        now = datetime(2024, 6, 1, tzinfo=timezone.utc)
+        old = datetime(2023, 1, 1, tzinfo=timezone.utc)
+        fe = FileExpertise(
+            author="Alice", file="old.py", commits=5,
+            lines_added=100, lines_deleted=10,
+            first_commit=old, last_commit=old, score=2.0,
+        )
+        analysis = RepoAnalysis(
+            path="/tmp/test",
+            files={"old.py": FileOwnership(file="old.py", experts=[fe], bus_factor=1)},
+        )
+        result = find_stale_files(analysis, stale_days=180, now=now)
+        assert len(result) == 1
+        assert result[0].file == "old.py"
+        assert result[0].days_since_last_commit > 180
+
+    def test_sorted_by_staleness(self):
+        now = datetime(2024, 6, 1, tzinfo=timezone.utc)
+        old1 = datetime(2023, 1, 1, tzinfo=timezone.utc)
+        old2 = datetime(2023, 6, 1, tzinfo=timezone.utc)
+        fe1 = FileExpertise(
+            author="Alice", file="very_old.py", commits=5,
+            lines_added=100, lines_deleted=10,
+            first_commit=old1, last_commit=old1, score=2.0,
+        )
+        fe2 = FileExpertise(
+            author="Bob", file="somewhat_old.py", commits=3,
+            lines_added=50, lines_deleted=5,
+            first_commit=old2, last_commit=old2, score=1.5,
+        )
+        analysis = RepoAnalysis(
+            path="/tmp/test",
+            files={
+                "very_old.py": FileOwnership(file="very_old.py", experts=[fe1], bus_factor=1),
+                "somewhat_old.py": FileOwnership(file="somewhat_old.py", experts=[fe2], bus_factor=1),
+            },
+        )
+        result = find_stale_files(analysis, stale_days=180, now=now)
+        assert len(result) == 2
+        assert result[0].days_since_last_commit >= result[1].days_since_last_commit
+
+    def test_custom_stale_days(self):
+        now = datetime(2024, 6, 1, tzinfo=timezone.utc)
+        recent = datetime(2024, 3, 1, tzinfo=timezone.utc)  # ~90 days ago
+        fe = FileExpertise(
+            author="Alice", file="recent.py", commits=5,
+            lines_added=100, lines_deleted=10,
+            first_commit=recent, last_commit=recent, score=5.0,
+        )
+        analysis = RepoAnalysis(
+            path="/tmp/test",
+            files={"recent.py": FileOwnership(file="recent.py", experts=[fe], bus_factor=1)},
+        )
+        # Not stale at 180 days
+        result = find_stale_files(analysis, stale_days=180, now=now)
+        assert len(result) == 0
+        # Stale at 60 days
+        result = find_stale_files(analysis, stale_days=60, now=now)
+        assert len(result) == 1
+
+    def test_stale_file_data(self):
+        now = datetime(2024, 6, 1, tzinfo=timezone.utc)
+        old = datetime(2023, 1, 1, tzinfo=timezone.utc)
+        fe = FileExpertise(
+            author="Alice", file="old.py", commits=5,
+            lines_added=100, lines_deleted=10,
+            first_commit=old, last_commit=old, score=2.0,
+        )
+        analysis = RepoAnalysis(
+            path="/tmp/test",
+            files={"old.py": FileOwnership(file="old.py", experts=[fe], bus_factor=1)},
+        )
+        result = find_stale_files(analysis, stale_days=180, now=now)
+        assert result[0].top_expert == "Alice"
+        assert result[0].expert_score == 2.0
+        assert result[0].bus_factor == 1
+        assert result[0].total_lines_changed == 110
