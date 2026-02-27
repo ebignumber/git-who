@@ -20,6 +20,8 @@ from .analyzer import (
     format_codeowners,
     compute_churn,
     find_stale_files,
+    compute_summary,
+    compute_trend,
 )
 from .display import (
     display_overview,
@@ -33,6 +35,8 @@ from .display import (
     format_markdown,
     display_churn,
     display_stale,
+    display_summary,
+    display_trend,
 )
 
 
@@ -511,3 +515,118 @@ def stale(ctx: click.Context, days: int, top_n: int) -> None:
         print(json.dumps(result, indent=2))
     else:
         display_stale(console, stale_files, top_n=top_n)
+
+
+@main.command()
+@click.option("--stale-days", default=180, help="Days without commits to consider stale (default: 180).")
+@click.pass_context
+def summary(ctx: click.Context, stale_days: int) -> None:
+    """Show a repo health dashboard with a letter grade.
+
+    Analyzes your repository across four dimensions and produces
+    a single health grade (A-F):
+
+    \b
+    - Bus Factor: how well-distributed is knowledge?
+    - Hotspot Risk: high-churn files known by only one person
+    - Knowledge Coverage: % of files with 2+ experts
+    - Freshness: % of files with recent activity
+
+    Great for sprint retrospectives, team health checks,
+    or sharing in documentation.
+
+    \b
+    Examples:
+        git-who summary                    # Full health dashboard
+        git-who summary --json             # Machine-readable health data
+        git-who summary --stale-days 90    # More aggressive staleness
+    """
+    path = ctx.obj["path"]
+    as_json = ctx.obj["json"]
+    since = ctx.obj["since"]
+    ignore = ctx.obj["ignore"]
+    console = Console(stderr=True) if as_json else Console()
+
+    try:
+        analysis = analyze_repo(path, since=since, ignore=ignore)
+    except RuntimeError as e:
+        console.print(f"[red]Error:[/] {e}")
+        sys.exit(1)
+
+    repo_summary = compute_summary(analysis, stale_days=stale_days)
+
+    if as_json:
+        result = {
+            "health_grade": repo_summary.health_grade,
+            "health_score": round(repo_summary.health_score, 1),
+            "total_files": repo_summary.total_files,
+            "total_authors": repo_summary.total_authors,
+            "bus_factor": repo_summary.bus_factor,
+            "hotspot_count": repo_summary.hotspot_count,
+            "files_at_risk": repo_summary.files_at_risk,
+            "risk_percentage": round(repo_summary.risk_percentage, 1),
+            "stale_count": repo_summary.stale_count,
+            "breakdown": {
+                "bus_factor_score": round(repo_summary.bus_factor_score, 1),
+                "hotspot_score": round(repo_summary.hotspot_score, 1),
+                "coverage_score": round(repo_summary.coverage_score, 1),
+                "staleness_score": round(repo_summary.staleness_score, 1),
+            },
+            "top_experts": [
+                {"name": name, "files_owned": fo, "avg_score": round(s, 2)}
+                for name, fo, s in repo_summary.top_experts
+            ],
+        }
+        print(json.dumps(result, indent=2))
+    else:
+        display_summary(console, repo_summary)
+
+
+@main.command()
+@click.option("--windows", "-w", multiple=True,
+              help="Time windows to analyze (e.g., '3 months ago'). Can be repeated.")
+@click.pass_context
+def trend(ctx: click.Context, windows: tuple[str, ...]) -> None:
+    """Show how repo health has changed over time.
+
+    Analyzes your repository at different historical windows to reveal
+    trends in bus factor, expertise coverage, and risk. Unique insight
+    no other tool provides.
+
+    \b
+    Examples:
+        git-who trend                              # Default: 3, 6, 12 months
+        git-who trend -w "1 month ago" -w "3 months ago"
+        git-who trend --json                       # Machine-readable
+    """
+    path = ctx.obj["path"]
+    as_json = ctx.obj["json"]
+    ignore = ctx.obj["ignore"]
+    console = Console(stderr=True) if as_json else Console()
+
+    window_list = list(windows) if windows else None
+
+    try:
+        repo_trend = compute_trend(path, windows=window_list, ignore=ignore)
+    except RuntimeError as e:
+        console.print(f"[red]Error:[/] {e}")
+        sys.exit(1)
+
+    if as_json:
+        result = {
+            "path": repo_trend.path,
+            "snapshots": [
+                {
+                    "window": s.window,
+                    "total_files": s.total_files,
+                    "total_authors": s.total_authors,
+                    "bus_factor": s.bus_factor,
+                    "hotspot_count": s.hotspot_count,
+                    "files_at_risk": s.files_at_risk,
+                }
+                for s in repo_trend.snapshots
+            ],
+        }
+        print(json.dumps(result, indent=2))
+    else:
+        display_trend(console, repo_trend)

@@ -10,11 +10,14 @@ from pathlib import Path
 import pytest
 
 from git_who.analyzer import (
+    AuthorSummary,
     FileExpertise,
     FileOwnership,
     RepoAnalysis,
     compute_expertise_score,
     compute_bus_factor,
+    compute_summary,
+    compute_trend,
     suggest_reviewers,
     analyze_repo,
     parse_git_log,
@@ -881,3 +884,156 @@ class TestFindStaleFiles:
         assert result[0].expert_score == 2.0
         assert result[0].bus_factor == 1
         assert result[0].total_lines_changed == 110
+
+
+class TestComputeSummary:
+    """Tests for compute_summary."""
+
+    def test_empty_analysis(self):
+        analysis = RepoAnalysis(path="/test")
+        summary = compute_summary(analysis)
+        assert summary.health_grade == "?"
+        assert summary.total_files == 0
+
+    def test_healthy_repo(self):
+        """A repo with good bus factor and no hotspots should get a good grade."""
+        analysis = RepoAnalysis(path="/test")
+
+        # Create files with multiple experts
+        for i in range(10):
+            experts = [
+                FileExpertise(author=f"dev{j}", file=f"file{i}.py",
+                              commits=5, lines_added=100, score=10.0 - j)
+                for j in range(3)
+            ]
+            analysis.files[f"file{i}.py"] = FileOwnership(
+                file=f"file{i}.py",
+                experts=experts,
+                bus_factor=3,
+            )
+
+        analysis.total_files = 10
+        analysis.total_authors = 3
+        analysis.bus_factor = 3
+
+        for j in range(3):
+            analysis.authors[f"dev{j}"] = AuthorSummary(
+                author=f"dev{j}",
+                files_owned=3 if j == 0 else 3,
+                total_commits=50,
+                avg_score=8.0 - j,
+            )
+
+        summary = compute_summary(analysis)
+        assert summary.health_grade in ("A", "B")
+        assert summary.health_score >= 70
+        assert summary.files_at_risk == 0
+        assert summary.hotspot_count == 0
+
+    def test_risky_repo(self):
+        """A repo with bus factor 1 and hotspots should get a bad grade."""
+        analysis = RepoAnalysis(path="/test")
+
+        # All files with only one expert
+        for i in range(10):
+            experts = [
+                FileExpertise(author="sole_dev", file=f"file{i}.py",
+                              commits=10, lines_added=200, score=15.0)
+            ]
+            analysis.files[f"file{i}.py"] = FileOwnership(
+                file=f"file{i}.py",
+                experts=experts,
+                bus_factor=1,
+            )
+
+        analysis.total_files = 10
+        analysis.total_authors = 1
+        analysis.bus_factor = 1
+        analysis.authors["sole_dev"] = AuthorSummary(
+            author="sole_dev",
+            files_owned=10,
+            total_commits=100,
+            avg_score=15.0,
+        )
+
+        summary = compute_summary(analysis)
+        assert summary.health_grade in ("D", "F")
+        assert summary.files_at_risk == 10
+        assert summary.risk_percentage == 100.0
+
+    def test_summary_top_experts(self):
+        """Summary should list top experts."""
+        analysis = RepoAnalysis(path="/test")
+        analysis.total_files = 1
+        analysis.total_authors = 2
+        analysis.bus_factor = 2
+
+        for name, score in [("alice", 20.0), ("bob", 10.0)]:
+            analysis.authors[name] = AuthorSummary(
+                author=name, files_owned=1, total_commits=10, avg_score=score
+            )
+        experts = [
+            FileExpertise(author="alice", file="f.py", commits=5, score=20.0),
+            FileExpertise(author="bob", file="f.py", commits=3, score=10.0),
+        ]
+        analysis.files["f.py"] = FileOwnership(file="f.py", experts=experts, bus_factor=2)
+
+        summary = compute_summary(analysis)
+        assert len(summary.top_experts) >= 2
+        assert summary.top_experts[0][0] == "alice"
+
+    def test_grade_boundaries(self):
+        """Test that health score maps to correct grades."""
+        analysis = RepoAnalysis(path="/test")
+        analysis.total_files = 1
+        analysis.bus_factor = 4
+        analysis.total_authors = 4
+        experts = [
+            FileExpertise(author=f"dev{i}", file="f.py", commits=5, score=10.0)
+            for i in range(4)
+        ]
+        analysis.files["f.py"] = FileOwnership(file="f.py", experts=experts, bus_factor=4)
+        for i in range(4):
+            analysis.authors[f"dev{i}"] = AuthorSummary(
+                author=f"dev{i}", files_owned=1, total_commits=5, avg_score=10.0
+            )
+        summary = compute_summary(analysis)
+        assert summary.health_grade == "A"
+        assert summary.health_score >= 90
+
+
+class TestComputeTrend:
+    """Tests for compute_trend."""
+
+    def test_trend_returns_snapshots(self, tmp_path):
+        """Trend should return at least the 'all time' snapshot."""
+        import subprocess
+        # Create a test repo
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(["git", "init"], cwd=repo, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=repo, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Tester"], cwd=repo, capture_output=True)
+        (repo / "file.txt").write_text("hello")
+        subprocess.run(["git", "add", "."], cwd=repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "init"], cwd=repo, capture_output=True)
+
+        trend = compute_trend(str(repo))
+        assert len(trend.snapshots) >= 1
+        assert trend.snapshots[0].window == "all time"
+        assert trend.snapshots[0].total_files >= 1
+
+    def test_trend_custom_windows(self, tmp_path):
+        """Trend should accept custom windows."""
+        import subprocess
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(["git", "init"], cwd=repo, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=repo, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Tester"], cwd=repo, capture_output=True)
+        (repo / "file.txt").write_text("hello")
+        subprocess.run(["git", "add", "."], cwd=repo, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "init"], cwd=repo, capture_output=True)
+
+        trend = compute_trend(str(repo), windows=["1 month ago"])
+        assert len(trend.snapshots) >= 1

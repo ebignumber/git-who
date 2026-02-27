@@ -71,7 +71,7 @@ class TestCLI:
         runner = CliRunner()
         result = runner.invoke(main, ["--version"])
         assert result.exit_code == 0
-        assert "0.4.0" in result.output
+        assert "0.5.0" in result.output
 
     def test_hotspots_command(self, git_repo):
         runner = CliRunner()
@@ -225,4 +225,51 @@ def test_stale_custom_days(git_repo):
     """Test stale command with custom days threshold."""
     runner = CliRunner()
     result = runner.invoke(main, ["--path", git_repo, "stale", "--days", "30"])
+    assert result.exit_code == 0
+
+
+def test_summary_command(git_repo):
+    """Test the summary CLI command."""
+    runner = CliRunner()
+    result = runner.invoke(main, ["--path", git_repo, "summary"])
+    assert result.exit_code == 0
+    assert "Health Grade" in result.output or "health" in result.output.lower()
+
+
+def test_summary_json(git_repo):
+    """Test summary JSON output."""
+    runner = CliRunner()
+    result = runner.invoke(main, ["--path", git_repo, "--json", "summary"])
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert "health_grade" in data
+    assert "health_score" in data
+    assert "breakdown" in data
+    assert data["health_grade"] in ("A", "B", "C", "D", "F", "?")
+
+
+def test_trend_command(git_repo):
+    """Test the trend CLI command."""
+    runner = CliRunner()
+    result = runner.invoke(main, ["--path", git_repo, "trend"])
+    assert result.exit_code == 0
+    # Should show at least the "all time" window
+    assert "all time" in result.output or "trend" in result.output.lower()
+
+
+def test_trend_json(git_repo):
+    """Test trend JSON output."""
+    runner = CliRunner()
+    result = runner.invoke(main, ["--path", git_repo, "--json", "trend"])
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert "snapshots" in data
+    assert len(data["snapshots"]) >= 1
+    assert data["snapshots"][0]["window"] == "all time"
+
+
+def test_trend_custom_windows(git_repo):
+    """Test trend with custom windows."""
+    runner = CliRunner()
+    result = runner.invoke(main, ["--path", git_repo, "trend", "-w", "1 month ago"])
     assert result.exit_code == 0

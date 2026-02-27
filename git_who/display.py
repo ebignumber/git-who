@@ -531,3 +531,254 @@ def display_stale(console: Console, stale_files: list, top_n: int = 20) -> None:
 
     console.print(table)
     console.print()
+
+
+def _grade_color(grade: str) -> str:
+    """Get color for a health grade."""
+    return {
+        "A": "bold green",
+        "B": "green",
+        "C": "yellow",
+        "D": "bold yellow",
+        "F": "bold red",
+    }.get(grade, "dim")
+
+
+def _trend_arrow(current: int | float, previous: int | float) -> str:
+    """Get a trend arrow comparing current vs previous value."""
+    if current > previous:
+        return "[green]\u2191[/]"  # ↑
+    elif current < previous:
+        return "[red]\u2193[/]"  # ↓
+    else:
+        return "[dim]\u2192[/]"  # →
+
+
+def _score_indicator(score: float) -> str:
+    """Visual indicator for a sub-score (0-100)."""
+    if score >= 80:
+        return "[green]\u2588\u2588\u2588\u2588\u2588[/]"
+    elif score >= 60:
+        return "[green]\u2588\u2588\u2588\u2588[/][dim]\u2591[/]"
+    elif score >= 40:
+        return "[yellow]\u2588\u2588\u2588[/][dim]\u2591\u2591[/]"
+    elif score >= 20:
+        return "[yellow]\u2588\u2588[/][dim]\u2591\u2591\u2591[/]"
+    else:
+        return "[red]\u2588[/][dim]\u2591\u2591\u2591\u2591[/]"
+
+
+def display_summary(console: Console, summary) -> None:
+    """Display a high-level repo health dashboard."""
+    from rich.layout import Layout
+    from rich.text import Text
+
+    # Health grade banner
+    grade_color = _grade_color(summary.health_grade)
+    bf_color = "red" if summary.bus_factor <= 1 else "yellow" if summary.bus_factor <= 2 else "green"
+
+    grade_text = Text()
+    grade_text.append(f"  Health Grade: ", style="bold")
+    grade_text.append(f"{summary.health_grade}", style=f"{grade_color}")
+    grade_text.append(f"  ({summary.health_score:.0f}/100)", style="dim")
+    grade_text.append(f"\n\n")
+    grade_text.append(f"  Files: ", style="dim")
+    grade_text.append(f"{summary.total_files}", style="bold")
+    grade_text.append(f"  |  Authors: ", style="dim")
+    grade_text.append(f"{summary.total_authors}", style="bold")
+    grade_text.append(f"  |  Bus Factor: ", style="dim")
+    grade_text.append(f"{summary.bus_factor}", style=f"bold {bf_color}")
+
+    console.print(Panel(
+        grade_text,
+        title=f"[bold]git-who summary[/]",
+        subtitle=summary.path,
+        border_style=grade_color.replace("bold ", ""),
+    ))
+    console.print()
+
+    # Sub-scores breakdown
+    scores_table = Table(title="Health Breakdown", show_header=True, expand=False)
+    scores_table.add_column("Category", style="bold", min_width=20)
+    scores_table.add_column("Score", justify="right", min_width=8)
+    scores_table.add_column("Weight", justify="right", style="dim", min_width=8)
+    scores_table.add_column("", min_width=15)
+    scores_table.add_column("Detail", min_width=30)
+
+    scores_table.add_row(
+        "Bus Factor",
+        f"{summary.bus_factor_score:.0f}",
+        "35%",
+        _score_indicator(summary.bus_factor_score),
+        f"Repo bus factor: {summary.bus_factor}",
+    )
+    scores_table.add_row(
+        "Hotspot Risk",
+        f"{summary.hotspot_score:.0f}",
+        "25%",
+        _score_indicator(summary.hotspot_score),
+        f"{summary.hotspot_count} hotspot(s) found",
+    )
+    scores_table.add_row(
+        "Knowledge Coverage",
+        f"{summary.coverage_score:.0f}",
+        "25%",
+        _score_indicator(summary.coverage_score),
+        f"{summary.files_at_risk} files have only 1 expert ({summary.risk_percentage:.0f}%)",
+    )
+    scores_table.add_row(
+        "Freshness",
+        f"{summary.staleness_score:.0f}",
+        "15%",
+        _score_indicator(summary.staleness_score),
+        f"{summary.stale_count} stale file(s)",
+    )
+    console.print(scores_table)
+    console.print()
+
+    # Top experts
+    if summary.top_experts:
+        expert_table = Table(title="Top Experts", show_header=True, expand=False)
+        expert_table.add_column("#", justify="right", style="dim", width=3)
+        expert_table.add_column("Expert", style="green", min_width=20)
+        expert_table.add_column("Files Owned", justify="right", min_width=11)
+        expert_table.add_column("Avg Score", justify="right", style="yellow", min_width=9)
+
+        for i, (name, files_owned, avg_score) in enumerate(summary.top_experts, 1):
+            expert_table.add_row(str(i), name, str(files_owned), f"{avg_score:.1f}")
+
+        console.print(expert_table)
+        console.print()
+
+    # Risk indicators
+    risk_items = []
+    if summary.bus_factor <= 1:
+        risk_items.append("[bold red]\u26a0 CRITICAL:[/] Repo bus factor is 1 — single point of failure!")
+    elif summary.bus_factor <= 2:
+        risk_items.append("[yellow]\u26a0 WARNING:[/] Repo bus factor is 2 — one departure could hurt")
+
+    if summary.hotspot_count > 0:
+        risk_items.append(f"[yellow]\u26a0[/] {summary.hotspot_count} hotspot(s): files changed often but known by few")
+
+    if summary.risk_percentage > 50:
+        risk_items.append(f"[red]\u26a0[/] {summary.risk_percentage:.0f}% of files have only one expert")
+
+    if summary.stale_count > 0:
+        risk_items.append(f"[dim]\u26a0[/] {summary.stale_count} file(s) with no recent commits (expertise decaying)")
+
+    if risk_items:
+        console.print(Panel(
+            "\n".join(risk_items),
+            title="[bold]Risk Indicators[/]",
+            border_style="yellow",
+        ))
+    else:
+        console.print(Panel(
+            "[bold green]\u2705 No major risks detected — knowledge is well-distributed![/]",
+            title="[bold]Risk Indicators[/]",
+            border_style="green",
+        ))
+    console.print()
+
+    # Recommendations
+    recs = []
+    if summary.bus_factor <= 1:
+        recs.append("Pair program on critical files to spread knowledge")
+    if summary.hotspot_count > 3:
+        recs.append(f"Review {summary.hotspot_count} hotspots: `git-who hotspots`")
+    if summary.stale_count > 0:
+        recs.append(f"Check {summary.stale_count} stale files: `git-who stale`")
+    if summary.coverage_score < 50:
+        recs.append("Encourage cross-team code reviews to improve coverage")
+
+    if recs:
+        rec_text = "\n".join(f"  {i}. {r}" for i, r in enumerate(recs, 1))
+        console.print(Panel(rec_text, title="[bold]Recommendations[/]", border_style="cyan"))
+        console.print()
+
+
+def display_trend(console: Console, trend) -> None:
+    """Display repo health trends over time."""
+    if len(trend.snapshots) < 2:
+        console.print("[dim]  Not enough data for trend analysis.[/]")
+        return
+
+    console.print(Panel(
+        f"[bold]Health trends for[/] {trend.path}",
+        title="git-who trend",
+        border_style="cyan",
+    ))
+    console.print()
+
+    table = Table(title="Repository Trends", show_header=True, expand=False)
+    table.add_column("Window", style="cyan", min_width=18)
+    table.add_column("Files", justify="right", min_width=8)
+    table.add_column("Authors", justify="right", min_width=8)
+    table.add_column("Bus Factor", justify="center", min_width=12)
+    table.add_column("Hotspots", justify="right", min_width=10)
+    table.add_column("At Risk", justify="right", min_width=10)
+
+    # Current snapshot is first
+    current = trend.snapshots[0]
+
+    for snap in trend.snapshots:
+        bf_color = "red" if snap.bus_factor <= 1 else "yellow" if snap.bus_factor <= 2 else "green"
+
+        # Add trend arrows for non-current snapshots
+        window_label = snap.window
+        if snap != current:
+            window_label = f"since {snap.window}"
+
+        table.add_row(
+            window_label,
+            str(snap.total_files),
+            str(snap.total_authors),
+            f"[{bf_color}]{snap.bus_factor}[/]",
+            str(snap.hotspot_count) if snap.hotspot_count > 0 else "[dim]0[/]",
+            str(snap.files_at_risk) if snap.files_at_risk > 0 else "[dim]0[/]",
+        )
+
+    console.print(table)
+    console.print()
+
+    # Trend analysis commentary
+    if len(trend.snapshots) >= 2:
+        recent = trend.snapshots[0]
+        oldest = trend.snapshots[-1]
+
+        insights = []
+
+        # Bus factor trend
+        if recent.bus_factor > oldest.bus_factor:
+            insights.append("[green]\u2191 Bus factor improved[/] — knowledge is spreading")
+        elif recent.bus_factor < oldest.bus_factor:
+            insights.append("[red]\u2193 Bus factor declined[/] — knowledge is concentrating")
+        else:
+            insights.append("[dim]\u2192 Bus factor stable[/]")
+
+        # Author trend
+        if recent.total_authors > oldest.total_authors:
+            diff = recent.total_authors - oldest.total_authors
+            insights.append(f"[green]\u2191 {diff} new contributor(s)[/] joined")
+        elif recent.total_authors < oldest.total_authors:
+            diff = oldest.total_authors - recent.total_authors
+            insights.append(f"[red]\u2193 {diff} contributor(s) became inactive[/]")
+
+        # Hotspot trend
+        if recent.hotspot_count < oldest.hotspot_count:
+            insights.append("[green]\u2191 Hotspot count decreased[/] — risk is reducing")
+        elif recent.hotspot_count > oldest.hotspot_count:
+            insights.append("[red]\u2193 Hotspot count increased[/] — new risky files")
+
+        # Risk trend
+        if recent.files_at_risk < oldest.files_at_risk:
+            insights.append("[green]\u2191 Fewer single-expert files[/] — coverage improving")
+        elif recent.files_at_risk > oldest.files_at_risk:
+            insights.append("[red]\u2193 More single-expert files[/] — coverage declining")
+
+        console.print(Panel(
+            "\n".join(insights),
+            title="[bold]Trend Insights[/]",
+            border_style="cyan",
+        ))
+        console.print()

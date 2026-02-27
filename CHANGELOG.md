@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.5.0
+
+### New Commands
+- **`git-who summary`** — Repository health dashboard with letter grade (A-F)
+  - Four-dimension health score: bus factor, hotspot risk, knowledge coverage, freshness
+  - Risk indicators with actionable recommendations
+  - JSON output for CI/CD health gates
+- **`git-who trend`** — Temporal analysis showing how repo health changes over time
+  - Customizable time windows (`-w "3 months ago"`)
+  - Trend insights with directional arrows
+  - No other tool offers this
+
+### Improvements
+- Test count: 91 to 103 (all passing)
+- Version bumped to 0.5.0
+
 All notable changes to git-who will be documented in this file.
 
 ## [0.4.0] - 2026-02-27

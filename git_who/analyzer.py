@@ -690,3 +690,209 @@ def find_stale_files(
 
     results.sort(key=lambda s: s.days_since_last_commit, reverse=True)
     return results
+
+
+@dataclass
+class RepoSummary:
+    """High-level repository health summary — the "screenshot command"."""
+
+    path: str
+    total_files: int = 0
+    total_authors: int = 0
+    bus_factor: int = 0
+    hotspot_count: int = 0
+    files_at_risk: int = 0
+    risk_percentage: float = 0.0
+    top_experts: list[tuple[str, int, float]] = field(default_factory=list)  # (name, files_owned, avg_score)
+    churn_leader: str | None = None
+    churn_leader_commits: int = 0
+    stale_count: int = 0
+    health_grade: str = "?"
+    health_score: float = 0.0
+    # Breakdown scores
+    bus_factor_score: float = 0.0
+    hotspot_score: float = 0.0
+    coverage_score: float = 0.0
+    staleness_score: float = 0.0
+
+
+def compute_summary(
+    analysis: RepoAnalysis,
+    stale_days: int = 180,
+    now: datetime | None = None,
+) -> RepoSummary:
+    """Compute a high-level health summary for the repository.
+
+    Produces a single health grade (A-F) from four sub-scores:
+    - Bus factor score: how well-distributed is knowledge?
+    - Hotspot score: how many risky high-churn files?
+    - Coverage score: what % of files have 2+ experts?
+    - Staleness score: what % of files have recent activity?
+    """
+    if now is None:
+        now = datetime.now(timezone.utc)
+
+    summary = RepoSummary(path=analysis.path)
+    summary.total_files = analysis.total_files
+    summary.total_authors = analysis.total_authors
+    summary.bus_factor = analysis.bus_factor
+
+    if analysis.total_files == 0:
+        summary.health_grade = "?"
+        return summary
+
+    # Files at risk (bus factor <= 1)
+    at_risk = [f for f, o in analysis.files.items() if o.bus_factor <= 1]
+    summary.files_at_risk = len(at_risk)
+    summary.risk_percentage = len(at_risk) / analysis.total_files * 100
+
+    # Hotspots
+    hotspots = find_hotspots(analysis)
+    summary.hotspot_count = len(hotspots)
+
+    # Top experts
+    sorted_authors = sorted(
+        analysis.authors.values(),
+        key=lambda a: a.avg_score * a.files_owned,
+        reverse=True,
+    )
+    summary.top_experts = [
+        (a.author, a.files_owned, a.avg_score)
+        for a in sorted_authors[:5]
+    ]
+
+    # Churn leader
+    churn_data = compute_churn(analysis)
+    if churn_data:
+        summary.churn_leader = churn_data[0].file
+        summary.churn_leader_commits = churn_data[0].total_commits
+
+    # Stale files
+    stale = find_stale_files(analysis, stale_days=stale_days, now=now)
+    summary.stale_count = len(stale)
+
+    # --- Health scoring ---
+
+    # Bus factor score (0-100): higher bus factor = better
+    if analysis.bus_factor >= 4:
+        summary.bus_factor_score = 100.0
+    elif analysis.bus_factor == 3:
+        summary.bus_factor_score = 85.0
+    elif analysis.bus_factor == 2:
+        summary.bus_factor_score = 65.0
+    elif analysis.bus_factor == 1:
+        summary.bus_factor_score = 30.0
+    else:
+        summary.bus_factor_score = 0.0
+
+    # Hotspot score (0-100): fewer hotspots = better
+    hotspot_ratio = summary.hotspot_count / max(1, analysis.total_files)
+    summary.hotspot_score = max(0, 100 - hotspot_ratio * 500)
+
+    # Coverage score (0-100): % of files with bus factor >= 2
+    well_covered = sum(1 for o in analysis.files.values() if o.bus_factor >= 2)
+    summary.coverage_score = well_covered / max(1, analysis.total_files) * 100
+
+    # Staleness score (0-100): fewer stale files = better
+    stale_ratio = summary.stale_count / max(1, analysis.total_files)
+    summary.staleness_score = max(0, 100 - stale_ratio * 200)
+
+    # Overall health score (weighted average)
+    summary.health_score = (
+        summary.bus_factor_score * 0.35
+        + summary.hotspot_score * 0.25
+        + summary.coverage_score * 0.25
+        + summary.staleness_score * 0.15
+    )
+
+    # Grade
+    if summary.health_score >= 90:
+        summary.health_grade = "A"
+    elif summary.health_score >= 75:
+        summary.health_grade = "B"
+    elif summary.health_score >= 60:
+        summary.health_grade = "C"
+    elif summary.health_score >= 40:
+        summary.health_grade = "D"
+    else:
+        summary.health_grade = "F"
+
+    return summary
+
+
+@dataclass
+class TrendSnapshot:
+    """A snapshot of repo health at a specific time window."""
+
+    window: str  # e.g., "3 months ago", "6 months ago"
+    total_files: int = 0
+    total_authors: int = 0
+    bus_factor: int = 0
+    hotspot_count: int = 0
+    files_at_risk: int = 0
+
+
+@dataclass
+class RepoTrend:
+    """Trend data showing how repo health changed over time."""
+
+    path: str
+    snapshots: list[TrendSnapshot] = field(default_factory=list)
+
+
+def compute_trend(
+    path: str,
+    windows: list[str] | None = None,
+    ignore: list[str] | None = None,
+) -> RepoTrend:
+    """Compute how repo health metrics have changed over time.
+
+    Analyzes the repo at multiple historical windows to show trends
+    in bus factor, expertise coverage, and risk.
+
+    Args:
+        path: Path to the git repository.
+        windows: List of time window strings (e.g., ["3 months ago", "6 months ago"]).
+        ignore: Optional list of glob patterns to exclude.
+
+    Returns: RepoTrend with snapshots for each window.
+    """
+    if windows is None:
+        windows = ["3 months ago", "6 months ago", "12 months ago"]
+
+    trend = RepoTrend(path=path)
+
+    # Current snapshot (all time)
+    current = analyze_repo(path, ignore=ignore)
+    current_hotspots = find_hotspots(current)
+    at_risk = sum(1 for o in current.files.values() if o.bus_factor <= 1)
+
+    trend.snapshots.append(TrendSnapshot(
+        window="all time",
+        total_files=current.total_files,
+        total_authors=current.total_authors,
+        bus_factor=current.bus_factor,
+        hotspot_count=len(current_hotspots),
+        files_at_risk=at_risk,
+    ))
+
+    # Historical snapshots
+    for window in windows:
+        try:
+            analysis = analyze_repo(path, since=window, ignore=ignore)
+            hotspots = find_hotspots(analysis)
+            at_risk_w = sum(1 for o in analysis.files.values() if o.bus_factor <= 1)
+
+            trend.snapshots.append(TrendSnapshot(
+                window=window,
+                total_files=analysis.total_files,
+                total_authors=analysis.total_authors,
+                bus_factor=analysis.bus_factor,
+                hotspot_count=len(hotspots),
+                files_at_risk=at_risk_w,
+            ))
+        except RuntimeError:
+            # Window may not have any commits
+            pass
+
+    return trend

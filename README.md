@@ -84,6 +84,78 @@ git-who --markdown             # Markdown report for PRs/docs
 git-who --json                 # Machine-readable JSON output
 ```
 
+### Repository Health Summary
+
+Get an instant health grade (A-F) for your repository's knowledge distribution:
+
+```bash
+git-who summary
+```
+
+```
+╭────────────────────────────── git-who summary ──────────────────────────────╮
+│   Health Grade: B  (78/100)                                                  │
+│                                                                              │
+│   Files: 142  |  Authors: 12  |  Bus Factor: 3                               │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+ Category              Score   Weight   Detail
+ Bus Factor              85     35%     Repo bus factor: 3
+ Hotspot Risk            72     25%     4 hotspot(s) found
+ Knowledge Coverage      68     25%     23 files have only 1 expert (16%)
+ Freshness               95     15%     2 stale file(s)
+
+╭────────────────────────────── Risk Indicators ───────────────────────────────╮
+│ ⚠ 4 hotspot(s): files changed often but known by few                         │
+│ ⚠ 2 file(s) with no recent commits (expertise decaying)                      │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+╭────────────────────────────── Recommendations ───────────────────────────────╮
+│   1. Review 4 hotspots: `git-who hotspots`                                   │
+│   2. Check 2 stale files: `git-who stale`                                    │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+Use in CI to gate on repo health:
+
+```bash
+# Fail CI if health score drops below 60
+health=$(git-who summary --json | jq '.health_score')
+if (( $(echo "$health < 60" | bc -l) )); then
+  echo "Repo health score $health is below threshold"
+  exit 1
+fi
+```
+
+### Trend Analysis
+
+See how your repository's health has changed over time — **unique to git-who**:
+
+```bash
+git-who trend
+```
+
+```
+ Window              Files   Authors   Bus Factor   Hotspots   At Risk
+ all time              142        12        3            4         23
+ since 3 months ago    138        10        3            3         20
+ since 6 months ago    120         8        2            5         28
+ since 12 months ago    95         6        2            7         35
+
+╭────────────────────────────── Trend Insights ────────────────────────────────╮
+│ ↑ Bus factor improved — knowledge is spreading                               │
+│ ↑ 6 new contributor(s) joined                                                │
+│ ↑ Hotspot count decreased — risk is reducing                                 │
+│ ↑ Fewer single-expert files — coverage improving                             │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
+Custom time windows:
+
+```bash
+git-who trend -w "1 month ago" -w "3 months ago" -w "1 year ago"
+```
+
 ### Filtering
 
 ```bash
@@ -429,6 +501,9 @@ If you prefer scripting directly:
 | Markdown output | Yes | No | No |
 | JSON output | Yes | Yes | No |
 | GitHub Action | Yes (official) | No | No |
+| Health grade (A-F) | Yes | No | No |
+| Trend analysis | Yes (over time) | No | No |
+| Pre-commit hook | Yes | No | No |
 | Zero config | Yes | Yes | Yes |
 
 ## Pre-commit Hook
@@ -439,7 +514,7 @@ Use git-who as a [pre-commit](https://pre-commit.com/) hook to monitor bus facto
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/trinarymage/git-who
-    rev: v0.4.0
+    rev: v0.5.0
     hooks:
       - id: git-who-bus-factor
 ```
