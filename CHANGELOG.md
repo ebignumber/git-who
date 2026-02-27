@@ -1,44 +1,76 @@
 # Changelog
 
-## [0.8.0] - 2026-02-27
+All notable changes to git-who will be documented in this file.
+
+## [0.11.0] - 2026-02-27
 
 ### Added
 - `git-who map` — Interactive ownership treemap visualization
-  - Zoomable treemap: files sized by activity, colored by bus factor risk
-  - Click directories to zoom in, click background to zoom out
-  - Hover tooltips showing expert details, commits, and lines changed
-  - Breadcrumb navigation for easy orientation
-  - Self-contained HTML — no external dependencies, share anywhere
-  - Dark theme with smooth CSS transitions
-- 12 new tests for treemap module (total: 129)
+  - Zoomable, color-coded by bus factor risk (red/yellow/green)
+  - Size represents volume of changes
+  - Click directories to zoom in, breadcrumbs to navigate back
+  - Tooltips with expert, score, bus factor details
+  - Self-contained HTML (no external dependencies, works offline)
+  - Dark theme, responsive design
 
+### Changed
+- Test count: 119 → 131 (all passing)
+- README updated with treemap documentation
+- Comparison table updated with interactive treemap
 
-## [0.7.0] - 2026-02-27
+## [0.10.0] - 2026-02-27
 
 ### Added
-- `git-who badge` — Generate shields.io-style SVG badges for README (bus factor, health grade)
-- `git-who onboard` — Generate new contributor onboarding guides (key contacts, key files, active areas)
-- GitHub issue templates (bug report, feature request)
-- Badge supports SVG, Markdown, and HTML output formats
-- Onboard supports terminal, JSON, and Markdown output
+- `git-who diff` — Change risk assessment for PRs and code review
+  - Risk score (0-100) and risk grade (A-F) for changed files
+  - Per-file risk level (CRITICAL, HIGH, MEDIUM, LOW) based on bus factor and change size
+  - Detects new files, files at risk, and expertise gaps
+  - Suggests reviewers based on changed file expertise
+  - Markdown output (`--markdown`) for PR comments
+  - JSON output (`--json`) for CI pipeline gates
+  - Configurable base branch (`--base`)
 
-## v0.5.0
+### Changed
+- Test count: 108 → 119 (all passing)
+- README updated with diff command documentation and CI examples
+- Comparison table updated with change risk assessment
 
-### New Commands
-- **`git-who summary`** — Repository health dashboard with letter grade (A-F)
-  - Four-dimension health score: bus factor, hotspot risk, knowledge coverage, freshness
-  - Risk indicators with actionable recommendations
-  - JSON output for CI/CD health gates
-- **`git-who trend`** — Temporal analysis showing how repo health changes over time
-  - Customizable time windows (`-w "3 months ago"`)
-  - Trend insights with directional arrows
-  - No other tool offers this
+## [0.9.0] - 2026-02-27
 
-### Improvements
-- Test count: 91 to 103 (all passing)
-- Version bumped to 0.5.0
+### Added
+- `git-who badge` — Generate SVG badges for your README
+  - Bus factor badge (`--type bus-factor`, default)
+  - Health grade badge (`--type health`)
+  - Save to file (`-o badge.svg`) or pipe to stdout
+- `git-who trend` — Bus factor trend over time
+  - Analyzes repository at historical intervals
+  - Shows bus factor, file count, at-risk files, and author count per point
+  - Sparkline visualization in terminal
+  - JSON output for scripting (`--json`)
+  - Configurable sample points (`--points`)
 
-All notable changes to git-who will be documented in this file.
+### Fixed
+- README now accurately reflects implemented features only
+- Removed claims about features that were not yet implemented
+
+### Changed
+- Test count: 97 → 106 (all passing)
+- Comparison table updated with trend analysis and badge generator
+
+## [0.8.1] - 2026-02-27
+
+### Added
+- `git-who health` — Knowledge health grade (A+ to F) for your repository
+  - Scores bus factor, at-risk files, knowledge concentration, and freshness
+  - JSON output for CI integration
+  - Shareable format for team discussions
+
+### Fixed
+- Version number consistency across pyproject.toml, __init__.py, and tests
+- Pre-commit hook version reference in README
+
+### Changed
+- Test count: 91 → 97 (all passing)
 
 ## [0.4.0] - 2026-02-27
 

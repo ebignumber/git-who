@@ -71,7 +71,7 @@ class TestCLI:
         runner = CliRunner()
         result = runner.invoke(main, ["--version"])
         assert result.exit_code == 0
-        assert "0.8.0" in result.output
+        assert "0.12.0" in result.output
 
     def test_hotspots_command(self, git_repo):
         runner = CliRunner()
@@ -228,185 +228,23 @@ def test_stale_custom_days(git_repo):
     assert result.exit_code == 0
 
 
-def test_summary_command(git_repo):
-    """Test the summary CLI command."""
+def test_report_command(git_repo, tmp_path):
+    """Test the report command generates HTML."""
+    output_file = str(tmp_path / "test-report.html")
     runner = CliRunner()
-    result = runner.invoke(main, ["--path", git_repo, "summary"])
+    result = runner.invoke(main, ["--path", git_repo, "report", "-o", output_file])
     assert result.exit_code == 0
-    assert "Health Grade" in result.output or "health" in result.output.lower()
+    assert Path(output_file).exists()
+    content = Path(output_file).read_text()
+    assert "<!DOCTYPE html>" in content
+    assert "git-who report" in content
+    assert "Knowledge Health" in content
 
 
-def test_summary_json(git_repo):
-    """Test summary JSON output."""
+def test_report_default_output(git_repo, tmp_path, monkeypatch):
+    """Test report command with default output path."""
+    monkeypatch.chdir(tmp_path)
     runner = CliRunner()
-    result = runner.invoke(main, ["--path", git_repo, "--json", "summary"])
+    result = runner.invoke(main, ["--path", git_repo, "report"])
     assert result.exit_code == 0
-    data = json.loads(result.output)
-    assert "health_grade" in data
-    assert "health_score" in data
-    assert "breakdown" in data
-    assert data["health_grade"] in ("A", "B", "C", "D", "F", "?")
-
-
-def test_trend_command(git_repo):
-    """Test the trend CLI command."""
-    runner = CliRunner()
-    result = runner.invoke(main, ["--path", git_repo, "trend"])
-    assert result.exit_code == 0
-    # Should show at least the "all time" window
-    assert "all time" in result.output or "trend" in result.output.lower()
-
-
-def test_trend_json(git_repo):
-    """Test trend JSON output."""
-    runner = CliRunner()
-    result = runner.invoke(main, ["--path", git_repo, "--json", "trend"])
-    assert result.exit_code == 0
-    data = json.loads(result.output)
-    assert "snapshots" in data
-    assert len(data["snapshots"]) >= 1
-    assert data["snapshots"][0]["window"] == "all time"
-
-
-def test_trend_custom_windows(git_repo):
-    """Test trend with custom windows."""
-    runner = CliRunner()
-    result = runner.invoke(main, ["--path", git_repo, "trend", "-w", "1 month ago"])
-    assert result.exit_code == 0
-
-
-
-class TestHtmlReport:
-    """Tests for HTML report generation."""
-
-    def test_html_flag_produces_html(self, git_repo):
-        """--html flag should produce valid HTML output."""
-        runner = CliRunner()
-        result = runner.invoke(main, ["--path", str(git_repo), "--html"])
-        assert result.exit_code == 0
-        assert "<!DOCTYPE html>" in result.output
-        assert "git-who" in result.output
-        assert "</html>" in result.output
-
-    def test_html_contains_grade(self, git_repo):
-        """HTML report should contain health grade."""
-        runner = CliRunner()
-        result = runner.invoke(main, ["--path", str(git_repo), "--html"])
-        assert result.exit_code == 0
-        assert "grade-letter" in result.output
-        assert "grade-score" in result.output
-
-    def test_html_contains_tables(self, git_repo):
-        """HTML report should contain data tables."""
-        runner = CliRunner()
-        result = runner.invoke(main, ["--path", str(git_repo), "--html"])
-        assert result.exit_code == 0
-        assert "<table>" in result.output
-        assert "Top Contributors" in result.output
-
-    def test_html_contains_chart_js(self, git_repo):
-        """HTML report should include Chart.js for visualizations."""
-        runner = CliRunner()
-        result = runner.invoke(main, ["--path", str(git_repo), "--html"])
-        assert result.exit_code == 0
-        assert "chart.js" in result.output
-        assert "bfChart" in result.output
-
-    def test_report_command_creates_file(self, git_repo, tmp_path):
-        """report command should create an HTML file."""
-        runner = CliRunner()
-        output_file = tmp_path / "test-report.html"
-        result = runner.invoke(main, [
-            "--path", str(git_repo), "report",
-            "-o", str(output_file),
-        ])
-        assert result.exit_code == 0
-        assert output_file.exists()
-        content = output_file.read_text()
-        assert "<!DOCTYPE html>" in content
-
-    def test_report_command_default_filename(self, git_repo, tmp_path):
-        """report command should use default filename."""
-        runner = CliRunner()
-        out_path = tmp_path / "report.html"
-        result = runner.invoke(main, [
-            "--path", str(git_repo), "report",
-            "-o", str(out_path),
-        ])
-        assert result.exit_code == 0
-        assert "Report saved to" in result.output
-        assert out_path.exists()
-
-    def test_html_escapes_special_chars(self, git_repo):
-        """HTML report should properly escape content."""
-        from git_who.html_report import generate_html_report
-        from git_who.analyzer import analyze_repo
-        analysis = analyze_repo(str(git_repo))
-        html_output = generate_html_report(analysis)
-        assert "<!DOCTYPE html>" in html_output
-        assert "</html>" in html_output
-
-
-class TestBadge:
-    """Tests for the badge command."""
-
-    def test_badge_svg_output(self, git_repo):
-        """Badge should produce valid SVG."""
-        runner = CliRunner()
-        result = runner.invoke(main, ["--path", str(git_repo), "badge"])
-        assert result.exit_code == 0
-        assert "<svg" in result.output
-        assert "bus factor" in result.output
-
-    def test_badge_health_type(self, git_repo):
-        """Health badge should include grade."""
-        runner = CliRunner()
-        result = runner.invoke(main, ["--path", str(git_repo), "badge", "--type", "health"])
-        assert result.exit_code == 0
-        assert "<svg" in result.output
-        assert "repo health" in result.output
-
-    def test_badge_save_to_file(self, git_repo, tmp_path):
-        """Badge should save to file."""
-        runner = CliRunner()
-        outfile = tmp_path / "badge.svg"
-        result = runner.invoke(main, ["--path", str(git_repo), "badge", "-o", str(outfile)])
-        assert result.exit_code == 0
-        assert outfile.exists()
-        assert "<svg" in outfile.read_text()
-
-    def test_badge_markdown_format(self, git_repo):
-        """Badge with markdown format."""
-        runner = CliRunner()
-        result = runner.invoke(main, ["--path", str(git_repo), "badge", "--format", "markdown"])
-        assert result.exit_code == 0
-        assert "<svg" in result.output
-
-
-class TestOnboard:
-    """Tests for the onboard command."""
-
-    def test_onboard_terminal(self, git_repo):
-        """Onboard should produce terminal output."""
-        runner = CliRunner()
-        result = runner.invoke(main, ["--path", str(git_repo), "onboard"])
-        assert result.exit_code == 0
-        assert "Key Contacts" in result.output or "Onboarding" in result.output
-
-    def test_onboard_json(self, git_repo):
-        """Onboard JSON should have expected keys."""
-        runner = CliRunner()
-        result = runner.invoke(main, ["--path", str(git_repo), "--json", "onboard"])
-        assert result.exit_code == 0
-        data = json.loads(result.output)
-        assert "key_contacts" in data
-        assert "key_files" in data
-        assert "active_areas" in data
-
-    def test_onboard_markdown(self, git_repo):
-        """Onboard markdown should be valid."""
-        runner = CliRunner()
-        result = runner.invoke(main, ["--path", str(git_repo), "--markdown", "onboard"])
-        assert result.exit_code == 0
-        assert "# Onboarding Guide" in result.output
-        assert "Key Contacts" in result.output
+    assert Path(tmp_path / "git-who-report.html").exists()

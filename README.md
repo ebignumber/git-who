@@ -54,15 +54,38 @@ Every codebase has hidden risks:
 
 git-who answers these in seconds. Zero config. Works on any git repository.
 
-## Installation
+## Real-World Example: Flask
 
-Install from source (PyPI coming soon):
+Here's what git-who finds when you run it on [Flask](https://github.com/pallets/flask) (69k+ stars):
 
-```bash
-pip install git+https://github.com/trinarymage/git-who.git
+```
+$ git-who health
+
+╭─────────────────────────── Knowledge Health Grade ───────────────────────────╮
+│   F    (2.7/100)                                                             │
+╰───────────────────── How well is knowledge distributed? ─────────────────────╯
+  Bus Factor                 1
+  Files Analyzed             616
+  Contributors               854
+  Files at Risk (BF=1)       603 (98%)
+  Hotspots                   348
+  Knowledge Concentration    96% held by top contributor
+
+Findings:
+  CRITICAL: Bus factor is 1 — a single departure could cripple the project
+  603 files (98%) have bus factor = 1
+  Knowledge is highly concentrated (96% held by top contributor)
 ```
 
-Or clone and install for development:
+**854 contributors, but 98% of files depend on a single person.** That's the kind of insight `git-who` surfaces in seconds. Try it on your own repo — you might be surprised.
+
+## Installation
+
+```bash
+pip install git-who
+```
+
+Or install from source:
 
 ```bash
 git clone https://github.com/trinarymage/git-who.git
@@ -71,96 +94,37 @@ cd git-who && pip install -e .
 
 ## Quick Start
 
+Run it in any git repository:
+
+```bash
+cd your-project
+git-who health    # Get a letter grade for knowledge distribution
+git-who           # Full overview with expertise scores
+git-who hotspots  # Find your riskiest code
+```
+
+### All Commands
+
 ```bash
 git-who                        # Full repository overview
+git-who diff                   # Risk assessment for current changes (PR review)
+git-who health                 # Letter grade for knowledge distribution
 git-who hotspots               # High churn + low bus factor = risk
 git-who bus-factor             # Detailed bus factor analysis
 git-who churn                  # Most frequently changed files
 git-who stale                  # Files with no recent activity
+git-who trend                  # Bus factor trend over time
 git-who codeowners             # Generate CODEOWNERS from expertise
 git-who teams                  # Expertise by team (email domain)
 git-who dirs                   # Expertise by directory
 git-who file src/main.py       # Expertise for specific files
 git-who review --base main     # Suggest reviewers for current changes
-git-who --markdown             # Markdown report for PRs/docs
-git-who report                 # Beautiful HTML report with charts
+git-who onboarding             # New contributor guide (NEW)
 git-who map                    # Interactive ownership treemap
-git-who --html > report.html   # HTML output to stdout
-git-who badge -o badge.svg       # SVG badge for your README
-git-who onboard                  # New contributor onboarding guide
+git-who report                 # Generate shareable HTML report
+git-who badge -o badge.svg     # Generate SVG badge for your README
+git-who --markdown             # Markdown report for PRs/docs
 git-who --json                 # Machine-readable JSON output
-```
-
-### Repository Health Summary
-
-Get an instant health grade (A-F) for your repository's knowledge distribution:
-
-```bash
-git-who summary
-```
-
-```
-╭────────────────────────────── git-who summary ──────────────────────────────╮
-│   Health Grade: B  (78/100)                                                  │
-│                                                                              │
-│   Files: 142  |  Authors: 12  |  Bus Factor: 3                               │
-╰──────────────────────────────────────────────────────────────────────────────╯
-
- Category              Score   Weight   Detail
- Bus Factor              85     35%     Repo bus factor: 3
- Hotspot Risk            72     25%     4 hotspot(s) found
- Knowledge Coverage      68     25%     23 files have only 1 expert (16%)
- Freshness               95     15%     2 stale file(s)
-
-╭────────────────────────────── Risk Indicators ───────────────────────────────╮
-│ ⚠ 4 hotspot(s): files changed often but known by few                         │
-│ ⚠ 2 file(s) with no recent commits (expertise decaying)                      │
-╰──────────────────────────────────────────────────────────────────────────────╯
-
-╭────────────────────────────── Recommendations ───────────────────────────────╮
-│   1. Review 4 hotspots: `git-who hotspots`                                   │
-│   2. Check 2 stale files: `git-who stale`                                    │
-╰──────────────────────────────────────────────────────────────────────────────╯
-```
-
-Use in CI to gate on repo health:
-
-```bash
-# Fail CI if health score drops below 60
-health=$(git-who summary --json | jq '.health_score')
-if (( $(echo "$health < 60" | bc -l) )); then
-  echo "Repo health score $health is below threshold"
-  exit 1
-fi
-```
-
-### Trend Analysis
-
-See how your repository's health has changed over time — **unique to git-who**:
-
-```bash
-git-who trend
-```
-
-```
- Window              Files   Authors   Bus Factor   Hotspots   At Risk
- all time              142        12        3            4         23
- since 3 months ago    138        10        3            3         20
- since 6 months ago    120         8        2            5         28
- since 12 months ago    95         6        2            7         35
-
-╭────────────────────────────── Trend Insights ────────────────────────────────╮
-│ ↑ Bus factor improved — knowledge is spreading                               │
-│ ↑ 6 new contributor(s) joined                                                │
-│ ↑ Hotspot count decreased — risk is reducing                                 │
-│ ↑ Fewer single-expert files — coverage improving                             │
-╰──────────────────────────────────────────────────────────────────────────────╯
-```
-
-Custom time windows:
-
-```bash
-git-who trend -w "1 month ago" -w "3 months ago" -w "1 year ago"
 ```
 
 ### Filtering
@@ -248,6 +212,37 @@ $ git-who churn
 └───┴──────────────────────────┴─────────┴────────┴─────────┴───────────┘
 ```
 
+### Knowledge Health Grade
+
+Get a letter grade for your repo's knowledge distribution — instantly shareable:
+
+```
+$ git-who health
+
+╭─────────────────── Knowledge Health Grade ───────────────────╮
+│   B+    (88.2/100)                                           │
+╰──────────── How well is knowledge distributed? ──────────────╯
+  Bus Factor                 3
+  Files Analyzed             142
+  Contributors               8
+  Files at Risk (BF=1)       12 (8%)
+  Hotspots                   3
+  Stale Files                4
+  Knowledge Concentration    38% held by top contributor
+
+Findings:
+  Good: Bus factor is 3
+  12 files (8%) have bus factor = 1
+  Knowledge is well distributed across the team
+```
+
+Use it in CI to track health over time:
+
+```bash
+GRADE=$(git-who --json health | jq -r '.grade')
+echo "Knowledge health: $GRADE"
+```
+
 ### Stale File Detection
 
 Find files where expertise is going cold — no recent commits means decaying knowledge:
@@ -283,43 +278,6 @@ $ git-who teams
 └───┴──────────────────────┴─────────┴───────┴─────────────┘
 ```
 
-### New Contributor Onboarding
-
-Generate a guide for new team members — who to ask, what to read first:
-
-```
-$ git-who onboard
-
-╭──────────────────── git-who onboard ─────────────────────╮
-│ Onboarding Guide                                          │
-│ 142 files · 12 contributors · bus factor 3                │
-╰───────────────────────────────────────────────────────────╯
-
-👋 Key Contacts — ask them about the codebase
-┌───┬──────────────┬─────────────┬───────────┐
-│ # │ Person       │ Files Owned │ Expertise │
-├───┼──────────────┼─────────────┼───────────┤
-│ 1 │ Alice        │          52 │      18.3 │
-│ 2 │ Bob          │          38 │      14.7 │
-│ 3 │ Charlie      │          31 │      11.2 │
-└───┴──────────────┴─────────────┴───────────┘
-
-📂 Key Files — start reading here
-┌───┬──────────────────────────┬──────────┬────────────┐
-│ # │ File                     │ Expert   │ Bus Factor │
-├───┼──────────────────────────┼──────────┼────────────┤
-│ 1 │ src/payment/billing.py   │ Alice    │     1      │
-│ 2 │ src/api/middleware.py    │ Alice    │     2      │
-│ 3 │ src/auth/oauth.py        │ Bob      │     1      │
-└───┴──────────────────────────┴──────────┴────────────┘
-```
-
-Export as Markdown for your wiki:
-
-```bash
-git-who --markdown onboard > ONBOARDING.md
-```
-
 ### Reviewer Suggestions
 
 ```
@@ -336,6 +294,43 @@ $ git-who review --base main --exclude "Alice"
 │ 2 │ Charlie      │      12.1 │ ██████████           │
 │ 3 │ Diana        │       5.4 │ ████                 │
 └───┴──────────────┴───────────┴──────────────────────┘
+```
+
+### Change Risk Assessment (NEW)
+
+Run `git-who diff` before merging a PR to see how risky the changes are:
+
+```
+$ git-who diff --base main
+
+╭──────────────── Change Risk Score ────────────────╮
+│   B    (28.5/100)                                 │
+╰─────────────────── vs main ───────────────────────╯
+  Files changed: 4  |  +87 -12  |  New files: 1  |  At risk: 1
+
+  ⚠️  1 file(s) with bus factor ≤ 1 being modified
+  ℹ️  1 new file(s) added
+
+              Changed Files
+┌──────┬──────────────────────┬─────────┬────────────┬──────────┐
+│ Risk │ File                 │ +/-     │ Bus Factor │ Expert   │
+├──────┼──────────────────────┼─────────┼────────────┼──────────┤
+│ HIGH │ src/auth/oauth.py    │ +42 -8  │     1      │ Bob      │
+│ MED  │ src/api/routes.py    │ +20 -4  │     2      │ Alice    │
+│ LOW  │ src/utils.py         │ +15 -0  │     3      │ Charlie  │
+│ LOW  │ tests/test_auth.py   │ +10 -0  │     new    │ —        │
+└──────┴──────────────────────┴─────────┴────────────┴──────────┘
+
+Suggested Reviewers:
+  1. Bob          ███████████████  (24.3)
+  2. Alice        ██████████       (12.1)
+```
+
+Works great in CI pipelines — use `--json` for machine-readable output, `--markdown` for PR comments:
+
+```bash
+git-who --json diff --base main        # JSON for CI gates
+git-who --markdown diff --base main    # Markdown for PR comments
 ```
 
 ### Directory Expertise
@@ -414,60 +409,119 @@ Keep CODEOWNERS in sync by running it in CI:
     git diff --exit-code .github/CODEOWNERS || echo "::warning::CODEOWNERS is out of date"
 ```
 
-### Badges for Your README
+### Trend Analysis
 
-Show your repo's bus factor or health grade with a shields.io-style badge:
+Track how your bus factor and knowledge distribution change over time:
+
+```
+$ git-who trend
+
+╭──────────── Trend Analysis ─────────────╮
+│ Bus Factor Trend: 1 → 3  (+2 improving) │
+╰─────────────────────────────────────────╯
+┌────────────┬────────────┬───────┬─────────┬─────────┬──────────────┐
+│ Date       │ Bus Factor │ Files │ At Risk │ Authors │              │
+├────────────┼────────────┼───────┼─────────┼─────────┼──────────────┤
+│ 2024-01-15 │     1      │    28 │      28 │       1 │ ███          │
+│ 2024-03-15 │     1      │    42 │      38 │       2 │ ███          │
+│ 2024-05-15 │     2      │    67 │      31 │       3 │ ███████      │
+│ 2024-07-15 │     2      │    89 │      27 │       4 │ ███████      │
+│ 2024-09-15 │     3      │   112 │      18 │       5 │ ██████████   │
+│ 2024-11-15 │     3      │   142 │      12 │       8 │ ██████████   │
+└────────────┴────────────┴───────┴─────────┴─────────┴──────────────┘
+
+  Sparkline: ▁▁▄▄██  (2024-01-15 → 2024-11-15)
+```
+
+### HTML Report
+
+Generate a self-contained HTML report to share with your team:
 
 ```bash
-git-who badge -o .github/bus-factor.svg    # Generate SVG badge
-git-who badge --type health -o health.svg   # Health grade badge
+git-who report                        # Write git-who-report.html
+git-who report -o team-health.html    # Custom output path
+```
+
+The report includes health grade, contributor overview, hotspot analysis, and bus factor distribution — all in a single file with dark theme styling. No server required. Drop it in a PR, email it, or host it anywhere.
+
+### Interactive Ownership Treemap
+
+Visualize your entire codebase as a zoomable treemap — size = volume, color = risk:
+
+```bash
+git-who map                          # Write git-who-map.html
+git-who map -o ownership.html        # Custom output path
+```
+
+The treemap is fully self-contained (no external dependencies) and interactive:
+
+- **Size** represents total lines changed — bigger boxes mean more activity
+- **Color** represents bus factor risk — red (BF=1), yellow (BF=2), green (BF=3+)
+- **Click** any directory to zoom in; use breadcrumbs to navigate back
+- **Hover** for details: expert, score, bus factor, number of contributors
+
+Share it with your team, drop it in a PR, or use it in a retro to spot at-risk areas visually. Works offline — no server required.
+
+### New Contributor Onboarding
+
+Help new team members ramp up efficiently — show them who to ask, where to start, and what to avoid:
+
+```
+$ git-who onboarding
+
+╭────────────── New Contributor Onboarding Guide ──────────────╮
+│   8 file(s) with good knowledge distribution — safe to start │
+│   12 high-churn sole-expert file(s) — tread carefully        │
+│   Top mentor: Alice (52 files owned)                         │
+╰────────── Who to talk to, where to start, what to avoid ─────╯
+
+  Mentors — Who to ask for help
+┌───┬──────────────┬─────────────┬───────────┐
+│ # │ Author       │ Files Owned │ Avg Score │
+├───┼──────────────┼─────────────┼───────────┤
+│ 1 │ Alice        │          52 │      18.3 │
+│ 2 │ Bob          │          38 │      14.7 │
+│ 3 │ Charlie      │          31 │      11.2 │
+└───┴──────────────┴─────────────┴───────────┘
+
+  Safe to Start — Well-shared knowledge
+┌──────────────────────────┬────┬──────────────┬──────────┐
+│ File                     │ BF │ Contributors │ Ask      │
+├──────────────────────────┼────┼──────────────┼──────────┤
+│ src/utils.py             │  3 │            4 │ Alice    │
+│ tests/test_core.py       │  3 │            3 │ Bob      │
+│ docs/api.md              │  2 │            3 │ Charlie  │
+└──────────────────────────┴────┴──────────────┴──────────┘
+
+  Tread Carefully — Sole expert territory
+┌──────────────────────────┬─────────┬──────────────┬───────┐
+│ File                     │ Commits │ Sole Expert  │ Score │
+├──────────────────────────┼─────────┼──────────────┼───────┤
+│ src/payment/billing.py   │      47 │ Alice        │  28.3 │
+│ src/auth/oauth.py        │      31 │ Bob          │  19.1 │
+└──────────────────────────┴─────────┴──────────────┴───────┘
+```
+
+Share with new hires, include in your onboarding docs, or use `--json` for integration with your onboarding tools.
+
+### Badge Generator
+
+Generate shields.io-style SVG badges to embed in your README:
+
+```bash
+# Bus factor badge
+git-who badge -o bus-factor.svg
+
+# Health grade badge
+git-who badge --type health -o health.svg
 ```
 
 Then add to your README:
 
 ```markdown
-![bus factor](.github/bus-factor.svg)
+![Bus Factor](./bus-factor.svg)
+![Knowledge Health](./health.svg)
 ```
-
-Color-coded: 🟢 green (4+), 🟡 yellow (2-3), 🔴 red (1).
-
-
-### Interactive Ownership Map
-
-Visualize your entire codebase as an interactive treemap. Files are sized by
-activity (commits × lines changed) and colored by bus factor risk. Click
-directories to zoom in, click background to zoom out.
-
-```bash
-git-who map                          # Generate git-who-map.html
-git-who map -o ownership.html        # Custom output path
-git-who map --open                   # Generate and open in browser
-```
-
-The map is a self-contained HTML file — no external dependencies. Share it
-with your team, embed it in documentation, or use it in presentations.
-Every red rectangle is a file that only one person understands.
-### HTML Reports
-
-Generate beautiful standalone HTML reports with interactive charts:
-
-```bash
-git-who report                       # Creates git-who-report.html
-git-who report -o health.html        # Custom output path
-git-who report --open                # Generate and open in browser
-git-who --html > report.html         # Pipe HTML to stdout
-```
-
-The HTML report includes:
-- **Health grade** (A-F) with breakdown scores
-- **Interactive charts** — bus factor distribution, top expert impact
-- **Expert leaderboard** with visual impact bars
-- **Hotspot analysis** — risky files highlighted
-- **Directory ownership** map
-- **File churn rankings** and **stale file detection**
-- Dark theme, responsive, self-contained (one file, no dependencies)
-
-Share reports in Slack, embed in wikis, or add to your documentation.
 
 ### Output Formats
 
@@ -566,6 +620,14 @@ jobs:
 If you prefer scripting directly:
 
 ```yaml
+- name: Change risk assessment on PR
+  run: |
+    pip install git-who
+    RISK=$(git-who --json diff --base origin/main | jq '.risk_grade')
+    echo "Change risk: $RISK"
+    git-who --markdown diff --base origin/main > /tmp/risk-report.md
+    gh pr comment ${{ github.event.pull_request.number }} --body-file /tmp/risk-report.md
+
 - name: Check bus factor
   run: |
     pip install git-who
@@ -585,28 +647,27 @@ If you prefer scripting directly:
 
 | Feature | git-who | git-fame | git-extras |
 |---------|---------|----------|------------|
+| **Change risk assessment** | **Yes (risk grade A-F per PR)** | No | No |
+| Knowledge health grade | Yes (A+ to F, shareable) | No | No |
 | Expertise scoring | Weighted (recency + frequency + volume) | Line count only | N/A |
 | Bus factor | Per-file, per-directory, and repo-wide | No | No |
 | Hotspot detection | Yes (churn x bus factor) | No | No |
+| Trend analysis | Yes (bus factor over time) | No | No |
 | File churn rankings | Yes | No | No |
 | Stale file detection | Yes (configurable threshold) | No | No |
 | CODEOWNERS generation | Yes (from expertise data) | No | No |
 | Team analysis | Yes (by email domain) | No | No |
 | Directory aggregation | Yes | No | No |
 | Reviewer suggestions | Yes (expertise-based) | No | No |
+| **Interactive treemap** | **Yes (zoomable, color-coded)** | No | No |
+| HTML report | Yes (self-contained, shareable) | No | No |
+| SVG badge generator | Yes (bus factor + health) | No | No |
 | Recency weighting | Yes (180-day half-life) | No | No |
 | Time filtering | Yes (`--since`) | No | No |
 | File exclusion | Yes (`--ignore`) | No | No |
 | Markdown output | Yes | No | No |
 | JSON output | Yes | Yes | No |
 | GitHub Action | Yes (official) | No | No |
-| Health grade (A-F) | Yes | No | No |
-| Trend analysis | Yes (over time) | No | No |
-| Pre-commit hook | Yes | No | No |
-| HTML reports with charts | Yes | No | No |
-| SVG badges for README | Yes | No | No |
-| Onboarding guide generator | Yes | No | No |
-| Interactive ownership treemap | Yes | No | No |
 | Zero config | Yes | Yes | Yes |
 
 ## Pre-commit Hook
@@ -617,7 +678,7 @@ Use git-who as a [pre-commit](https://pre-commit.com/) hook to monitor bus facto
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/trinarymage/git-who
-    rev: v0.8.0
+    rev: v0.11.0  # or pin to latest release
     hooks:
       - id: git-who-bus-factor
 ```

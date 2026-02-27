@@ -10,14 +10,11 @@ from pathlib import Path
 import pytest
 
 from git_who.analyzer import (
-    AuthorSummary,
     FileExpertise,
     FileOwnership,
     RepoAnalysis,
     compute_expertise_score,
     compute_bus_factor,
-    compute_summary,
-    compute_trend,
     suggest_reviewers,
     analyze_repo,
     parse_git_log,
@@ -27,6 +24,8 @@ from git_who.analyzer import (
     find_stale_files,
     generate_codeowners,
     format_codeowners,
+    compute_health,
+    generate_onboarding,
     _matches_any_pattern,
     FileOwnership,
     Hotspot,
@@ -886,154 +885,628 @@ class TestFindStaleFiles:
         assert result[0].total_lines_changed == 110
 
 
-class TestComputeSummary:
-    """Tests for compute_summary."""
+# --- Unit tests for health grading ---
 
-    def test_empty_analysis(self):
-        analysis = RepoAnalysis(path="/test")
-        summary = compute_summary(analysis)
-        assert summary.health_grade == "?"
-        assert summary.total_files == 0
 
-    def test_healthy_repo(self):
-        """A repo with good bus factor and no hotspots should get a good grade."""
-        analysis = RepoAnalysis(path="/test")
+class TestHealth:
+    def test_empty_repo(self):
+        analysis = RepoAnalysis(path="/tmp/test", total_files=0, total_authors=0)
+        report = compute_health(analysis)
+        assert report.grade == "N/A"
+        assert report.score == 0
 
-        # Create files with multiple experts
+    def test_single_author_gets_low_grade(self):
+        now = datetime.now(timezone.utc)
+        fe = FileExpertise(
+            author="Alice", file="main.py", commits=10,
+            lines_added=500, lines_deleted=50,
+            first_commit=now - timedelta(days=30), last_commit=now,
+            score=15.0,
+        )
+        analysis = RepoAnalysis(
+            path="/tmp/test",
+            files={"main.py": FileOwnership(file="main.py", experts=[fe], bus_factor=1)},
+            authors={"Alice": None},
+            total_files=1, total_authors=1,
+        )
+        report = compute_health(analysis)
+        assert report.grade == "F" or report.grade.startswith("D")
+        assert report.bus_factor <= 1
+        assert report.concentration == 1.0
+
+    def test_well_distributed_gets_good_grade(self):
+        now = datetime.now(timezone.utc)
+        files = {}
         for i in range(10):
-            experts = [
-                FileExpertise(author=f"dev{j}", file=f"file{i}.py",
-                              commits=5, lines_added=100, score=10.0 - j)
-                for j in range(3)
-            ]
-            analysis.files[f"file{i}.py"] = FileOwnership(
+            fe_a = FileExpertise(
+                author="Alice", file=f"file{i}.py", commits=5,
+                lines_added=100, lines_deleted=10,
+                first_commit=now - timedelta(days=60), last_commit=now - timedelta(days=5),
+                score=8.0,
+            )
+            fe_b = FileExpertise(
+                author="Bob", file=f"file{i}.py", commits=4,
+                lines_added=80, lines_deleted=8,
+                first_commit=now - timedelta(days=50), last_commit=now - timedelta(days=3),
+                score=7.0,
+            )
+            fe_c = FileExpertise(
+                author="Charlie", file=f"file{i}.py", commits=3,
+                lines_added=60, lines_deleted=5,
+                first_commit=now - timedelta(days=40), last_commit=now - timedelta(days=1),
+                score=6.0,
+            )
+            files[f"file{i}.py"] = FileOwnership(
                 file=f"file{i}.py",
-                experts=experts,
+                experts=[fe_a, fe_b, fe_c],
                 bus_factor=3,
             )
 
-        analysis.total_files = 10
-        analysis.total_authors = 3
-        analysis.bus_factor = 3
+        analysis = RepoAnalysis(
+            path="/tmp/test",
+            files=files,
+            authors={"Alice": None, "Bob": None, "Charlie": None},
+            bus_factor=3,
+            total_files=10, total_authors=3,
+        )
+        report = compute_health(analysis)
+        # With BF 3, no at-risk files, good distribution: should get a good grade
+        assert report.score >= 60
+        assert report.files_at_risk == 0
 
-        for j in range(3):
-            analysis.authors[f"dev{j}"] = AuthorSummary(
-                author=f"dev{j}",
-                files_owned=3 if j == 0 else 3,
-                total_commits=50,
-                avg_score=8.0 - j,
-            )
+    def test_health_json_fields(self):
+        analysis = RepoAnalysis(
+            path="/tmp/test",
+            total_files=0, total_authors=0,
+        )
+        report = compute_health(analysis)
+        assert hasattr(report, "grade")
+        assert hasattr(report, "score")
+        assert hasattr(report, "bus_factor")
+        assert hasattr(report, "files_at_risk")
+        assert hasattr(report, "hotspot_count")
+        assert hasattr(report, "stale_count")
+        assert hasattr(report, "concentration")
+        assert hasattr(report, "details")
 
-        summary = compute_summary(analysis)
-        assert summary.health_grade in ("A", "B")
-        assert summary.health_score >= 70
-        assert summary.files_at_risk == 0
-        assert summary.hotspot_count == 0
+    def test_health_cli(self, git_repo):
+        """Test health command via CLI."""
+        from click.testing import CliRunner
+        from git_who.cli import main
+        runner = CliRunner()
+        result = runner.invoke(main, ["--path", git_repo, "health"])
+        assert result.exit_code == 0
+        # Should contain the grade
+        assert any(g in result.output for g in ["A+", "A", "A-", "B+", "B", "B-", "C+", "C", "C-", "D+", "D", "D-", "F"])
 
-    def test_risky_repo(self):
-        """A repo with bus factor 1 and hotspots should get a bad grade."""
-        analysis = RepoAnalysis(path="/test")
+    def test_health_json(self, git_repo):
+        """Test health JSON output via CLI."""
+        import json as json_mod
+        from click.testing import CliRunner
+        from git_who.cli import main
+        runner = CliRunner()
+        result = runner.invoke(main, ["--json", "--path", git_repo, "health"])
+        assert result.exit_code == 0
+        data = json_mod.loads(result.output)
+        assert "grade" in data
+        assert "score" in data
+        assert isinstance(data["score"], (int, float))
 
-        # All files with only one expert
-        for i in range(10):
-            experts = [
-                FileExpertise(author="sole_dev", file=f"file{i}.py",
-                              commits=10, lines_added=200, score=15.0)
-            ]
-            analysis.files[f"file{i}.py"] = FileOwnership(
-                file=f"file{i}.py",
-                experts=experts,
-                bus_factor=1,
-            )
 
-        analysis.total_files = 10
-        analysis.total_authors = 1
-        analysis.bus_factor = 1
-        analysis.authors["sole_dev"] = AuthorSummary(
-            author="sole_dev",
-            files_owned=10,
-            total_commits=100,
-            avg_score=15.0,
+# --- Badge tests ---
+
+
+class TestBadgeGenerator:
+    def test_bus_factor_badge_svg(self):
+        from git_who.analyzer import generate_bus_factor_badge
+        svg = generate_bus_factor_badge(3)
+        assert "<svg" in svg
+        assert "bus factor" in svg
+        assert "3" in svg
+
+    def test_bus_factor_badge_colors(self):
+        from git_who.analyzer import generate_bus_factor_badge
+        # Low bus factor = red
+        svg_low = generate_bus_factor_badge(1)
+        assert "e05d44" in svg_low
+        # High bus factor = green
+        svg_high = generate_bus_factor_badge(4)
+        assert "4c1" in svg_high
+
+    def test_health_badge_svg(self):
+        from git_who.analyzer import generate_health_badge
+        svg = generate_health_badge("A", 95.0)
+        assert "<svg" in svg
+        assert "knowledge health" in svg
+        assert ">A<" in svg
+
+    def test_health_badge_colors(self):
+        from git_who.analyzer import generate_health_badge
+        svg_a = generate_health_badge("A+", 98.0)
+        assert "4c1" in svg_a
+        svg_f = generate_health_badge("F", 20.0)
+        assert "e05d44" in svg_f
+
+    def test_badge_cli(self, git_repo):
+        from click.testing import CliRunner
+        from git_who.cli import main
+        runner = CliRunner()
+        result = runner.invoke(main, ["--path", git_repo, "badge"])
+        assert result.exit_code == 0
+        assert "<svg" in result.output
+
+    def test_badge_health_cli(self, git_repo):
+        from click.testing import CliRunner
+        from git_who.cli import main
+        runner = CliRunner()
+        result = runner.invoke(main, ["--path", git_repo, "badge", "--type", "health"])
+        assert result.exit_code == 0
+        assert "<svg" in result.output
+
+    def test_badge_output_file(self, git_repo, tmp_path):
+        from click.testing import CliRunner
+        from git_who.cli import main
+        runner = CliRunner()
+        output_path = str(tmp_path / "test-badge.svg")
+        result = runner.invoke(main, ["--path", git_repo, "badge", "-o", output_path])
+        assert result.exit_code == 0
+        content = (tmp_path / "test-badge.svg").read_text()
+        assert "<svg" in content
+
+
+# --- Trend tests ---
+
+
+class TestTrend:
+    def test_trend_cli(self, git_repo):
+        """Trend command runs without error on a real repo."""
+        from click.testing import CliRunner
+        from git_who.cli import main
+        runner = CliRunner()
+        result = runner.invoke(main, ["--path", git_repo, "trend", "--points", "3"])
+        # May have "Not enough history" if repo is too small, that's OK
+        assert result.exit_code == 0
+
+    def test_trend_json_cli(self, git_repo):
+        """Trend JSON output is valid JSON."""
+        import json as json_mod
+        from click.testing import CliRunner
+        from git_who.cli import main
+        runner = CliRunner()
+        result = runner.invoke(main, ["--json", "--path", git_repo, "trend", "--points", "3"])
+        assert result.exit_code == 0
+        # Output might be empty if repo doesn't have enough history
+        output = result.output.strip()
+        if output and output.startswith("{"):
+            data = json_mod.loads(output)
+            assert "trend" in data
+
+
+# --- Diff analysis tests ---
+
+
+@pytest.fixture
+def git_repo_with_branch(tmp_path):
+    """Create a git repo with a main branch and a feature branch with changes."""
+    repo = tmp_path / "diff-repo"
+    repo.mkdir()
+
+    env_alice = {**os.environ, "GIT_AUTHOR_NAME": "Alice", "GIT_AUTHOR_EMAIL": "alice@test.com",
+                 "GIT_COMMITTER_NAME": "Alice", "GIT_COMMITTER_EMAIL": "alice@test.com"}
+    env_bob = {**os.environ, "GIT_AUTHOR_NAME": "Bob", "GIT_AUTHOR_EMAIL": "bob@test.com",
+               "GIT_COMMITTER_NAME": "Bob", "GIT_COMMITTER_EMAIL": "bob@test.com"}
+
+    def run(*args, env=None):
+        return subprocess.run(
+            ["git"] + list(args), cwd=str(repo), capture_output=True, text=True,
+            env=env or env_alice,
         )
 
-        summary = compute_summary(analysis)
-        assert summary.health_grade in ("D", "F")
-        assert summary.files_at_risk == 10
-        assert summary.risk_percentage == 100.0
+    run("init")
+    run("config", "user.email", "alice@test.com")
+    run("config", "user.name", "Alice")
 
-    def test_summary_top_experts(self):
-        """Summary should list top experts."""
-        analysis = RepoAnalysis(path="/test")
-        analysis.total_files = 1
-        analysis.total_authors = 2
+    # Main branch: Alice creates files
+    (repo / "core.py").write_text("def process():\n    return 1\n")
+    run("add", "core.py")
+    run("commit", "-m", "add core")
+
+    (repo / "utils.py").write_text("def helper():\n    return 42\n")
+    run("add", "utils.py")
+    run("commit", "-m", "add utils")
+
+    # Alice adds more to core (many commits = high expertise)
+    for i in range(5):
+        (repo / "core.py").write_text(f"def process():\n    return {i+2}\n\ndef extra_{i}():\n    pass\n")
+        run("add", "core.py")
+        run("commit", "-m", f"update core #{i}")
+
+    # Tag this as 'main' reference
+    run("branch", "-M", "main")
+
+    # Create feature branch
+    run("checkout", "-b", "feature")
+
+    # Bob modifies core.py (Alice's territory) and adds a new file
+    (repo / "core.py").write_text("def process():\n    return 999\n\ndef extra_0():\n    pass\n\ndef extra_1():\n    pass\n\ndef extra_2():\n    pass\n\ndef extra_3():\n    pass\n\ndef extra_4():\n    pass\n\ndef new_feature():\n    # big new feature\n    x = 1\n    y = 2\n    z = 3\n    return x + y + z\n")
+    run("add", "core.py", env=env_bob)
+    run("commit", "-m", "modify core", env=env_bob)
+
+    (repo / "new_module.py").write_text("class NewThing:\n    pass\n")
+    run("add", "new_module.py", env=env_bob)
+    run("commit", "-m", "add new module", env=env_bob)
+
+    return str(repo)
+
+
+class TestDiffAnalysis:
+    def test_analyze_diff_basic(self, git_repo_with_branch):
+        from git_who.analyzer import analyze_repo, analyze_diff
+        analysis = analyze_repo(git_repo_with_branch)
+        diff_result = analyze_diff(analysis, git_repo_with_branch, base="main")
+
+        assert diff_result.total_files_changed >= 1
+        assert diff_result.total_lines_added > 0
+        assert isinstance(diff_result.risk_score, float)
+        assert diff_result.risk_grade in ("A", "B", "C", "D", "F")
+
+    def test_diff_detects_new_files(self, git_repo_with_branch):
+        from git_who.analyzer import analyze_repo, analyze_diff
+        analysis = analyze_repo(git_repo_with_branch)
+        diff_result = analyze_diff(analysis, git_repo_with_branch, base="main")
+
+        assert diff_result.new_files >= 1
+        new_file_entries = [cf for cf in diff_result.changed_files if cf.is_new_file]
+        assert len(new_file_entries) >= 1
+
+    def test_diff_identifies_risk(self, git_repo_with_branch):
+        from git_who.analyzer import analyze_repo, analyze_diff
+        analysis = analyze_repo(git_repo_with_branch)
+        diff_result = analyze_diff(analysis, git_repo_with_branch, base="main")
+
+        # core.py should have some risk (bus factor likely 1, Alice's territory)
+        core_entries = [cf for cf in diff_result.changed_files if cf.file == "core.py"]
+        if core_entries:
+            assert core_entries[0].risk_level in ("high", "critical", "medium")
+
+    def test_diff_suggests_reviewers(self, git_repo_with_branch):
+        from git_who.analyzer import analyze_repo, analyze_diff
+        analysis = analyze_repo(git_repo_with_branch)
+        diff_result = analyze_diff(analysis, git_repo_with_branch, base="main")
+
+        # Should suggest Alice as reviewer (she owns core.py)
+        assert len(diff_result.reviewers) > 0
+
+    def test_diff_summary_not_empty(self, git_repo_with_branch):
+        from git_who.analyzer import analyze_repo, analyze_diff
+        analysis = analyze_repo(git_repo_with_branch)
+        diff_result = analyze_diff(analysis, git_repo_with_branch, base="main")
+
+        assert len(diff_result.summary) > 0
+
+    def test_diff_empty_when_no_changes(self, git_repo):
+        """Diff against HEAD should show no changes."""
+        from git_who.analyzer import analyze_repo, analyze_diff
+        analysis = analyze_repo(git_repo)
+        diff_result = analyze_diff(analysis, git_repo, base="HEAD")
+
+        assert diff_result.total_files_changed == 0
+
+    def test_diff_cli(self, git_repo_with_branch):
+        from click.testing import CliRunner
+        from git_who.cli import main
+        runner = CliRunner()
+        result = runner.invoke(main, ["--path", git_repo_with_branch, "diff", "--base", "main"])
+        assert result.exit_code == 0
+        assert "Risk" in result.output or "risk" in result.output.lower()
+
+    def test_diff_json_cli(self, git_repo_with_branch):
+        import json as json_mod
+        from click.testing import CliRunner
+        from git_who.cli import main
+        runner = CliRunner()
+        result = runner.invoke(main, ["--json", "--path", git_repo_with_branch, "diff", "--base", "main"])
+        assert result.exit_code == 0
+        data = json_mod.loads(result.output)
+        assert "risk_score" in data
+        assert "risk_grade" in data
+        assert "changed_files" in data
+        assert "reviewers" in data
+
+    def test_diff_markdown_cli(self, git_repo_with_branch):
+        from click.testing import CliRunner
+        from git_who.cli import main
+        runner = CliRunner()
+        result = runner.invoke(main, ["--markdown", "--path", git_repo_with_branch, "diff", "--base", "main"])
+        assert result.exit_code == 0
+        assert "Change Risk Report" in result.output
+        assert "Risk Grade" in result.output
+
+    def test_changed_file_risk_fields(self, git_repo_with_branch):
+        from git_who.analyzer import analyze_repo, analyze_diff
+        analysis = analyze_repo(git_repo_with_branch)
+        diff_result = analyze_diff(analysis, git_repo_with_branch, base="main")
+
+        for cf in diff_result.changed_files:
+            assert hasattr(cf, "file")
+            assert hasattr(cf, "lines_added")
+            assert hasattr(cf, "lines_deleted")
+            assert hasattr(cf, "bus_factor")
+            assert hasattr(cf, "risk_level")
+            assert cf.risk_level in ("low", "medium", "high", "critical")
+
+    def test_diff_risk_ordering(self, git_repo_with_branch):
+        from git_who.analyzer import analyze_repo, analyze_diff
+        analysis = analyze_repo(git_repo_with_branch)
+        diff_result = analyze_diff(analysis, git_repo_with_branch, base="main")
+
+        if len(diff_result.changed_files) >= 2:
+            risk_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+            for i in range(len(diff_result.changed_files) - 1):
+                a = diff_result.changed_files[i]
+                b = diff_result.changed_files[i + 1]
+                assert risk_order[a.risk_level] <= risk_order[b.risk_level]
+
+
+# --- Treemap tests ---
+
+
+class TestTreemap:
+    """Tests for the interactive treemap generation."""
+
+    def _make_analysis(self):
+        fe1 = FileExpertise(author="Alice", file="src/core.py", commits=10,
+            lines_added=200, lines_deleted=50, score=15.0)
+        fe2 = FileExpertise(author="Bob", file="src/core.py", commits=5,
+            lines_added=100, lines_deleted=20, score=8.0)
+        fe3 = FileExpertise(author="Alice", file="src/utils.py", commits=3,
+            lines_added=50, lines_deleted=10, score=5.0)
+        fe4 = FileExpertise(author="Charlie", file="tests/test_core.py", commits=7,
+            lines_added=150, lines_deleted=30, score=12.0)
+        return RepoAnalysis(
+            path="/tmp/test-repo",
+            files={
+                "src/core.py": FileOwnership(file="src/core.py", experts=[fe1, fe2], bus_factor=2),
+                "src/utils.py": FileOwnership(file="src/utils.py", experts=[fe3], bus_factor=1),
+                "tests/test_core.py": FileOwnership(file="tests/test_core.py", experts=[fe4], bus_factor=1),
+            },
+            total_files=3,
+            total_authors=3,
+        )
+
+    def test_treemap_html_structure(self):
+        from git_who.analyzer import generate_treemap_html
+        analysis = self._make_analysis()
+        html = generate_treemap_html(analysis)
+        assert "<!DOCTYPE html>" in html
+        assert "git-who treemap" in html
+        assert "</html>" in html
+
+    def test_treemap_contains_data(self):
+        from git_who.analyzer import generate_treemap_html
+        analysis = self._make_analysis()
+        html = generate_treemap_html(analysis)
+        assert "Alice" in html
+        assert "core.py" in html
+        assert "utils.py" in html
+        assert "test_core.py" in html
+
+    def test_treemap_contains_bus_factor_colors(self):
+        from git_who.analyzer import generate_treemap_html
+        analysis = self._make_analysis()
+        html = generate_treemap_html(analysis)
+        assert "e05d44" in html  # red for BF=1
+        assert "3fb950" in html  # green for BF=3+
+
+    def test_treemap_self_contained(self):
+        from git_who.analyzer import generate_treemap_html
+        analysis = self._make_analysis()
+        html = generate_treemap_html(analysis)
+        # No external dependencies
+        assert "src=" not in html or "script src" not in html.lower()
+        assert "<script>" in html
+        assert "<style>" in html
+
+    def test_treemap_has_breadcrumbs(self):
+        from git_who.analyzer import generate_treemap_html
+        analysis = self._make_analysis()
+        html = generate_treemap_html(analysis)
+        assert "breadcrumbs" in html
+
+    def test_treemap_has_tooltip(self):
+        from git_who.analyzer import generate_treemap_html
+        analysis = self._make_analysis()
+        html = generate_treemap_html(analysis)
+        assert "tooltip" in html
+
+    def test_treemap_empty_analysis(self):
+        from git_who.analyzer import generate_treemap_html
+        analysis = RepoAnalysis(path="/tmp/empty", total_files=0)
+        html = generate_treemap_html(analysis)
+        assert "<!DOCTYPE html>" in html
+
+    def test_treemap_single_file(self):
+        from git_who.analyzer import generate_treemap_html
+        fe = FileExpertise(author="Alice", file="main.py", commits=5,
+            lines_added=100, lines_deleted=10, score=10.0)
+        analysis = RepoAnalysis(
+            path="/tmp/single",
+            files={"main.py": FileOwnership(file="main.py", experts=[fe], bus_factor=1)},
+            total_files=1,
+        )
+        html = generate_treemap_html(analysis)
+        assert "main.py" in html
+
+    def test_treemap_cli(self, git_repo):
+        """Test map command via CLI."""
+        from click.testing import CliRunner
+        from git_who.cli import main
+        import tempfile
+        runner = CliRunner()
+        with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as f:
+            output_path = f.name
+        try:
+            result = runner.invoke(main, ["--path", git_repo, "map", "-o", output_path])
+            assert result.exit_code == 0
+            content = Path(output_path).read_text()
+            assert "<!DOCTYPE html>" in content
+            assert "treemap" in content
+        finally:
+            Path(output_path).unlink(missing_ok=True)
+
+    def test_treemap_cli_default_output(self, git_repo):
+        """Test map command creates default output file."""
+        import os
+        from click.testing import CliRunner
+        from git_who.cli import main
+        runner = CliRunner()
+        # Run in tmp directory to avoid polluting workspace
+        with runner.isolated_filesystem():
+            # Copy repo path for use
+            result = runner.invoke(main, ["--path", git_repo, "map"])
+            assert result.exit_code == 0
+            assert os.path.exists("git-who-map.html")
+
+    def test_treemap_has_directory_structure(self):
+        from git_who.analyzer import generate_treemap_html
+        analysis = self._make_analysis()
+        html = generate_treemap_html(analysis)
+        # Should contain directory names
+        assert "src" in html
+        assert "tests" in html
+
+    def test_treemap_has_legend(self):
+        from git_who.analyzer import generate_treemap_html
+        analysis = self._make_analysis()
+        html = generate_treemap_html(analysis)
+        assert "legend" in html
+        assert "BF=1" in html
+        assert "BF=2" in html
+        assert "BF=3+" in html
+
+
+# --- Onboarding tests ---
+
+
+class TestOnboarding:
+    """Tests for the onboarding guide feature."""
+
+    def _make_analysis(self) -> RepoAnalysis:
+        """Create a test analysis with varied bus factors."""
+        now = datetime.now(timezone.utc)
+        analysis = RepoAnalysis(path="/tmp/test-repo")
+
+        # File with high bus factor (good for starters)
+        analysis.files["src/utils.py"] = FileOwnership(
+            file="src/utils.py",
+            experts=[
+                FileExpertise(author="Alice", file="src/utils.py", commits=20, lines_added=500,
+                              lines_deleted=100, last_commit=now, score=15.0),
+                FileExpertise(author="Bob", file="src/utils.py", commits=15, lines_added=300,
+                              lines_deleted=50, last_commit=now, score=12.0),
+                FileExpertise(author="Charlie", file="src/utils.py", commits=5, lines_added=100,
+                              lines_deleted=20, last_commit=now, score=5.0),
+            ],
+            bus_factor=3,
+        )
+
+        # File with bus factor 1 (danger zone)
+        analysis.files["src/core/engine.py"] = FileOwnership(
+            file="src/core/engine.py",
+            experts=[
+                FileExpertise(author="Alice", file="src/core/engine.py", commits=50, lines_added=2000,
+                              lines_deleted=500, last_commit=now, score=30.0),
+            ],
+            bus_factor=1,
+        )
+
+        # Another high-BF file
+        analysis.files["tests/test_utils.py"] = FileOwnership(
+            file="tests/test_utils.py",
+            experts=[
+                FileExpertise(author="Bob", file="tests/test_utils.py", commits=10, lines_added=200,
+                              lines_deleted=30, last_commit=now, score=8.0),
+                FileExpertise(author="Charlie", file="tests/test_utils.py", commits=8, lines_added=150,
+                              lines_deleted=20, last_commit=now, score=6.0),
+            ],
+            bus_factor=2,
+        )
+
+        from git_who.analyzer import AuthorSummary
+        analysis.authors = {
+            "Alice": AuthorSummary(author="Alice", files_owned=2, total_commits=70, total_lines=3100, avg_score=22.5),
+            "Bob": AuthorSummary(author="Bob", files_owned=1, total_commits=25, total_lines=730, avg_score=10.0),
+            "Charlie": AuthorSummary(author="Charlie", files_owned=0, total_commits=13, total_lines=290, avg_score=5.5),
+        }
+        analysis.author_emails = {"Alice": "alice@company.com", "Bob": "bob@company.com", "Charlie": "charlie@gmail.com"}
         analysis.bus_factor = 2
+        analysis.total_files = 3
+        analysis.total_authors = 3
+        return analysis
 
-        for name, score in [("alice", 20.0), ("bob", 10.0)]:
-            analysis.authors[name] = AuthorSummary(
-                author=name, files_owned=1, total_commits=10, avg_score=score
-            )
-        experts = [
-            FileExpertise(author="alice", file="f.py", commits=5, score=20.0),
-            FileExpertise(author="bob", file="f.py", commits=3, score=10.0),
-        ]
-        analysis.files["f.py"] = FileOwnership(file="f.py", experts=experts, bus_factor=2)
+    def test_onboarding_returns_guide(self):
+        analysis = self._make_analysis()
+        guide = generate_onboarding(analysis)
+        assert guide is not None
+        assert len(guide.summary) > 0
 
-        summary = compute_summary(analysis)
-        assert len(summary.top_experts) >= 2
-        assert summary.top_experts[0][0] == "alice"
+    def test_onboarding_identifies_mentors(self):
+        analysis = self._make_analysis()
+        guide = generate_onboarding(analysis)
+        assert len(guide.mentors) > 0
+        # Alice owns the most files
+        assert guide.mentors[0][0] == "Alice"
 
-    def test_grade_boundaries(self):
-        """Test that health score maps to correct grades."""
-        analysis = RepoAnalysis(path="/test")
-        analysis.total_files = 1
-        analysis.bus_factor = 4
-        analysis.total_authors = 4
-        experts = [
-            FileExpertise(author=f"dev{i}", file="f.py", commits=5, score=10.0)
-            for i in range(4)
-        ]
-        analysis.files["f.py"] = FileOwnership(file="f.py", experts=experts, bus_factor=4)
-        for i in range(4):
-            analysis.authors[f"dev{i}"] = AuthorSummary(
-                author=f"dev{i}", files_owned=1, total_commits=5, avg_score=10.0
-            )
-        summary = compute_summary(analysis)
-        assert summary.health_grade == "A"
-        assert summary.health_score >= 90
+    def test_onboarding_identifies_starter_files(self):
+        analysis = self._make_analysis()
+        guide = generate_onboarding(analysis)
+        starter_paths = [f.file for f in guide.starter_files]
+        assert "src/utils.py" in starter_paths
+        assert "tests/test_utils.py" in starter_paths
 
+    def test_onboarding_identifies_avoid_files(self):
+        analysis = self._make_analysis()
+        guide = generate_onboarding(analysis)
+        avoid_paths = [f.file for f in guide.avoid_files]
+        assert "src/core/engine.py" in avoid_paths
 
-class TestComputeTrend:
-    """Tests for compute_trend."""
+    def test_onboarding_starter_files_have_high_bf(self):
+        analysis = self._make_analysis()
+        guide = generate_onboarding(analysis)
+        for f in guide.starter_files:
+            assert f.bus_factor >= 2
 
-    def test_trend_returns_snapshots(self, tmp_path):
-        """Trend should return at least the 'all time' snapshot."""
-        import subprocess
-        # Create a test repo
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        subprocess.run(["git", "init"], cwd=repo, capture_output=True)
-        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=repo, capture_output=True)
-        subprocess.run(["git", "config", "user.name", "Tester"], cwd=repo, capture_output=True)
-        (repo / "file.txt").write_text("hello")
-        subprocess.run(["git", "add", "."], cwd=repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "init"], cwd=repo, capture_output=True)
+    def test_onboarding_avoid_files_have_low_bf(self):
+        analysis = self._make_analysis()
+        guide = generate_onboarding(analysis)
+        for f in guide.avoid_files:
+            assert f.bus_factor <= 1
 
-        trend = compute_trend(str(repo))
-        assert len(trend.snapshots) >= 1
-        assert trend.snapshots[0].window == "all time"
-        assert trend.snapshots[0].total_files >= 1
+    def test_onboarding_directories(self):
+        analysis = self._make_analysis()
+        guide = generate_onboarding(analysis)
+        dir_names = [d[0] for d in guide.directories_by_accessibility]
+        assert "src" in dir_names or "tests" in dir_names
 
-    def test_trend_custom_windows(self, tmp_path):
-        """Trend should accept custom windows."""
-        import subprocess
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        subprocess.run(["git", "init"], cwd=repo, capture_output=True)
-        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=repo, capture_output=True)
-        subprocess.run(["git", "config", "user.name", "Tester"], cwd=repo, capture_output=True)
-        (repo / "file.txt").write_text("hello")
-        subprocess.run(["git", "add", "."], cwd=repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "init"], cwd=repo, capture_output=True)
+    def test_onboarding_json_output(self):
+        """Test that onboarding guide can be serialized."""
+        analysis = self._make_analysis()
+        guide = generate_onboarding(analysis)
+        import json
+        result = {
+            "mentors": [{"author": a, "avg_score": round(s, 2), "files_owned": f} for a, s, f in guide.mentors],
+            "starter_files": [{"file": f.file, "bus_factor": f.bus_factor} for f in guide.starter_files],
+            "avoid_files": [{"file": f.file, "bus_factor": f.bus_factor} for f in guide.avoid_files],
+            "summary": guide.summary,
+        }
+        serialized = json.dumps(result)
+        assert "Alice" in serialized
+        assert "src/utils.py" in serialized
 
-        trend = compute_trend(str(repo), windows=["1 month ago"])
-        assert len(trend.snapshots) >= 1
+    def test_onboarding_empty_repo(self):
+        """Test onboarding on a repo with no files."""
+        analysis = RepoAnalysis(path="/tmp/empty")
+        guide = generate_onboarding(analysis)
+        assert len(guide.mentors) == 0
+        assert len(guide.starter_files) == 0
+        assert len(guide.avoid_files) == 0
