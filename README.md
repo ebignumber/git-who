@@ -15,32 +15,17 @@
 
 **git-who** analyzes git history to compute expertise scores, bus factor, and code ownership. Unlike simple line-counting tools, git-who weights contributions by **recency**, **frequency**, and **volume** — showing who *actually* knows each part of your codebase right now.
 
-```
-$ git-who
+<p align="center">
+  <a href="https://trinarymage.github.io/git-who/"><strong>Live Demo</strong></a> &nbsp;|&nbsp;
+  <a href="https://trinarymage.github.io/git-who/demo-flask-map.html"><strong>Interactive Treemap</strong></a> &nbsp;|&nbsp;
+  <a href="https://trinarymage.github.io/git-who/demo-flask-report.html"><strong>Health Report</strong></a>
+</p>
 
-┌──────────────────────────────────────────────────┐
-│ Repository: /home/user/myproject                 │
-│                             Bus Factor: 3        │
-└──────────────────────────────────────────────────┘
-  Files analyzed: 142  |  Authors: 8  |  Bus Factor: 3
-
-       Top Contributors by Expertise
-┌───┬──────────────┬─────────────┬─────────┬───────┬───────────┐
-│ # │ Author       │ Files Owned │ Commits │ Lines │ Avg Score │
-├───┼──────────────┼─────────────┼─────────┼───────┼───────────┤
-│ 1 │ Alice        │          52 │     340 │ 12400 │      18.3 │
-│ 2 │ Bob          │          38 │     210 │  8200 │      14.7 │
-│ 3 │ Charlie      │          31 │     180 │  6100 │      11.2 │
-└───┴──────────────┴─────────────┴─────────┴───────┴───────────┘
-
-       Files at Risk (bus factor = 1)
-┌──────────────────────────┬──────────────┬───────┐
-│ File                     │ Sole Expert  │ Score │
-├──────────────────────────┼──────────────┼───────┤
-│ src/payment/billing.py   │ Alice        │  28.3 │
-│ src/auth/oauth.py        │ Bob          │  19.1 │
-└──────────────────────────┴──────────────┴───────┘
-```
+<p align="center">
+  <picture>
+    <img alt="git-who me — personal expertise profile" src="docs/screenshot-me.svg" width="700">
+  </picture>
+</p>
 
 ## Why git-who?
 
@@ -58,26 +43,15 @@ git-who answers these in seconds. Zero config. Works on any git repository.
 
 Here's what git-who finds when you run it on [Flask](https://github.com/pallets/flask) (69k+ stars):
 
-```
-$ git-who health
-
-╭─────────────────────────── Knowledge Health Grade ───────────────────────────╮
-│   F    (2.7/100)                                                             │
-╰───────────────────── How well is knowledge distributed? ─────────────────────╯
-  Bus Factor                 1
-  Files Analyzed             616
-  Contributors               854
-  Files at Risk (BF=1)       603 (98%)
-  Hotspots                   348
-  Knowledge Concentration    96% held by top contributor
-
-Findings:
-  CRITICAL: Bus factor is 1 — a single departure could cripple the project
-  603 files (98%) have bus factor = 1
-  Knowledge is highly concentrated (96% held by top contributor)
-```
+<p align="center">
+  <picture>
+    <img alt="git-who health on Flask" src="docs/screenshot-health.svg" width="650">
+  </picture>
+</p>
 
 **854 contributors, but 98% of files depend on a single person.** That's the kind of insight `git-who` surfaces in seconds. Try it on your own repo — you might be surprised.
+
+[See the full interactive treemap for Flask](https://trinarymage.github.io/git-who/demo-flask-map.html) | [Full health report](https://trinarymage.github.io/git-who/demo-flask-report.html)
 
 ## Installation
 
@@ -103,10 +77,62 @@ git-who           # Full overview with expertise scores
 git-who hotspots  # Find your riskiest code
 ```
 
+### Your Personal Expertise Profile
+
+Run `git-who me` to see YOUR impact on the codebase — what you own, where you're the sole expert, and what happens if you leave:
+
+```
+$ git-who me
+
+╭────────────────────── Alice  <alice@company.com> ──────────────────────╮
+│   Files touched: 87/142   |   Files owned (top expert): 52   |        │
+│   Sole expert: 23                                                      │
+│   Total commits: 340   |   Total lines: 24,800   |                    │
+│   Expertise share: 48.2%                                               │
+╰──────────────────────── Your Expertise Profile ────────────────────────╯
+
+  If you left tomorrow, 23 file(s) would have no expert.
+  That's 16% of the codebase at critical risk.
+
+  ! You are the SOLE expert on 23 file(s) (16% of the codebase).
+    If you left, no one else has significant expertise on these.
+  * You are the top expert on 52 file(s) (37% of the codebase).
+  ! You hold 48% of the total codebase expertise.
+    This is a significant concentration risk.
+
+       Your Top Files by Expertise
+┌───┬──────────────────────────┬───────┬───────┬────────────────────┐
+│ # │ File                     │ Score │ Share │                    │
+├───┼──────────────────────────┼───────┼───────┼────────────────────┤
+│ 1 │ src/payment/billing.py   │  28.3 │  100% │ ████████████████████│
+│ 2 │ src/core/engine.py       │  24.1 │   89% │ █████████████████   │
+│ 3 │ src/auth/middleware.py   │  19.4 │   72% │ ██████████████      │
+└───┴──────────────────────────┴───────┴───────┴────────────────────┘
+
+       Files That Depend ONLY on You (23)
+┌───┬──────────────────────────────────────────────┐
+│ # │ File                                         │
+├───┼──────────────────────────────────────────────┤
+│ 1 │ src/payment/billing.py                       │
+│ 2 │ src/payment/invoicing.py                     │
+│ 3 │ src/auth/sso.py                              │
+│ 4 │ src/core/scheduler.py                        │
+└───┴──────────────────────────────────────────────┘
+```
+
+Try it on your repo — you might be surprised how much depends on you.
+
+```bash
+git-who me                     # Auto-detect from git config
+git-who me "Alice"             # Show profile for a specific person
+git-who --json me              # JSON for scripting
+```
+
 ### All Commands
 
 ```bash
 git-who                        # Full repository overview
+git-who me                     # YOUR personal expertise profile (NEW)
 git-who diff                   # Risk assessment for current changes (PR review)
 git-who health                 # Letter grade for knowledge distribution
 git-who hotspots               # High churn + low bus factor = risk
@@ -119,7 +145,7 @@ git-who teams                  # Expertise by team (email domain)
 git-who dirs                   # Expertise by directory
 git-who file src/main.py       # Expertise for specific files
 git-who review --base main     # Suggest reviewers for current changes
-git-who onboarding             # New contributor guide (NEW)
+git-who onboarding             # New contributor guide
 git-who map                    # Interactive ownership treemap
 git-who report                 # Generate shareable HTML report
 git-who badge -o badge.svg     # Generate SVG badge for your README
@@ -435,6 +461,8 @@ $ git-who trend
 
 ### HTML Report
 
+> **Live demo:** [Flask health report](https://trinarymage.github.io/git-who/demo-flask-report.html)
+
 Generate a self-contained HTML report to share with your team:
 
 ```bash
@@ -445,6 +473,8 @@ git-who report -o team-health.html    # Custom output path
 The report includes health grade, contributor overview, hotspot analysis, and bus factor distribution — all in a single file with dark theme styling. No server required. Drop it in a PR, email it, or host it anywhere.
 
 ### Interactive Ownership Treemap
+
+> **Live demo:** [Flask ownership treemap](https://trinarymage.github.io/git-who/demo-flask-map.html) | [Flask health report](https://trinarymage.github.io/git-who/demo-flask-report.html)
 
 Visualize your entire codebase as a zoomable treemap — size = volume, color = risk:
 
@@ -647,6 +677,7 @@ If you prefer scripting directly:
 
 | Feature | git-who | git-fame | git-extras |
 |---------|---------|----------|------------|
+| **Personal expertise profile** | **Yes (`git-who me`)** | No | No |
 | **Change risk assessment** | **Yes (risk grade A-F per PR)** | No | No |
 | Knowledge health grade | Yes (A+ to F, shareable) | No | No |
 | Expertise scoring | Weighted (recency + frequency + volume) | Line count only | N/A |
@@ -678,7 +709,7 @@ Use git-who as a [pre-commit](https://pre-commit.com/) hook to monitor bus facto
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/trinarymage/git-who
-    rev: v0.11.0  # or pin to latest release
+    rev: v0.12.0  # or pin to latest release
     hooks:
       - id: git-who-bus-factor
 ```
