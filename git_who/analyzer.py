@@ -1578,6 +1578,218 @@ def generate_onboarding(analysis: RepoAnalysis, max_items: int = 10) -> Onboardi
     )
 
 
+@dataclass
+class PersonalReport:
+    """Personal expertise report for a single author."""
+
+    author: str
+    email: str
+    total_files: int  # total files in repo
+    files_touched: int  # files this author contributed to
+    files_owned: int  # files where this author is #1 expert
+    sole_expert_files: list[str]  # files with bus_factor=1 where they're the expert
+    total_commits: int
+    total_lines: int
+    total_score: float
+    repo_score_share: float  # 0-1, fraction of total repo expertise
+    top_files: list[tuple[str, float, float]]  # (file, score, share_of_file)
+    expertise_by_directory: list[tuple[str, int, int, float]]  # (dir, owned, total, pct)
+    risk_summary: list[str]  # human-readable risk bullets
+    impact_statement: str  # "If you left, X files would lose their top expert"
+
+
+def get_git_user(cwd: str) -> tuple[str, str]:
+    """Get the current git user's name and email."""
+    try:
+        name = run_git(["config", "user.name"], cwd).strip()
+    except RuntimeError:
+        name = ""
+    try:
+        email = run_git(["config", "user.email"], cwd).strip()
+    except RuntimeError:
+        email = ""
+    return name, email
+
+
+def _find_author_in_analysis(analysis: RepoAnalysis, name: str, email: str) -> str | None:
+    """Find the matching author name in analysis, trying name then email."""
+    # Exact name match
+    if name and name in analysis.authors:
+        return name
+    # Try case-insensitive name match
+    if name:
+        name_lower = name.lower()
+        for author in analysis.authors:
+            if author.lower() == name_lower:
+                return author
+    # Try email match
+    if email:
+        email_lower = email.lower()
+        for author, auth_email in analysis.author_emails.items():
+            if auth_email.lower() == email_lower:
+                return author
+    # Try partial name match (first name or last name)
+    if name:
+        parts = name.lower().split()
+        for author in analysis.authors:
+            author_lower = author.lower()
+            if any(p in author_lower for p in parts):
+                return author
+    return None
+
+
+def generate_personal_report(
+    analysis: RepoAnalysis,
+    author_name: str | None = None,
+    max_files: int = 15,
+) -> PersonalReport:
+    """Generate a personal expertise report for a specific author.
+
+    If author_name is None, auto-detects from git config.
+    """
+    # Resolve author
+    if author_name is None:
+        git_name, git_email = get_git_user(analysis.path)
+        resolved = _find_author_in_analysis(analysis, git_name, git_email)
+        if resolved is None:
+            known = sorted(analysis.authors.keys())
+            hint = known[0] if known else "AuthorName"
+            raise RuntimeError(
+                f"Could not find your contributions. "
+                f"Git config says: {git_name} <{git_email}>. "
+                f"Try: git-who me \"{hint}\"\n"
+                f"Known authors: {', '.join(known[:10])}"
+            )
+        author_name = resolved
+    else:
+        resolved = _find_author_in_analysis(analysis, author_name, "")
+        if resolved is None:
+            raise RuntimeError(
+                f"Author '{author_name}' not found. "
+                f"Known authors: {', '.join(sorted(analysis.authors.keys())[:10])}"
+            )
+        author_name = resolved
+
+    email = analysis.author_emails.get(author_name, "unknown")
+    summary = analysis.authors.get(author_name)
+
+    # Gather per-file data
+    files_touched = 0
+    files_owned = 0
+    sole_expert_files: list[str] = []
+    total_score = 0.0
+    repo_total_score = 0.0
+    top_files: list[tuple[str, float, float]] = []
+
+    # Directory aggregation
+    dir_owned: dict[str, int] = defaultdict(int)
+    dir_total: dict[str, int] = defaultdict(int)
+
+    for filepath, ownership in analysis.files.items():
+        file_total = sum(e.score for e in ownership.experts)
+        repo_total_score += file_total
+
+        # Directory tracking
+        parts = filepath.split("/")
+        dir_name = parts[0] if len(parts) > 1 else "."
+        dir_total[dir_name] = dir_total.get(dir_name, 0) + 1
+
+        # Check if this author contributed to this file
+        author_expert = None
+        for e in ownership.experts:
+            if e.author == author_name:
+                author_expert = e
+                break
+
+        if author_expert is None:
+            continue
+
+        files_touched += 1
+        total_score += author_expert.score
+        share = author_expert.score / file_total if file_total > 0 else 0
+        top_files.append((filepath, author_expert.score, share))
+
+        # Is this author the top expert?
+        if ownership.experts and ownership.experts[0].author == author_name:
+            files_owned += 1
+            dir_owned[dir_name] = dir_owned.get(dir_name, 0) + 1
+
+            # Sole expert (bus factor = 1)?
+            if ownership.bus_factor <= 1:
+                sole_expert_files.append(filepath)
+
+    # Sort top files by score
+    top_files.sort(key=lambda x: x[1], reverse=True)
+    top_files = top_files[:max_files]
+
+    # Directory expertise
+    expertise_by_dir: list[tuple[str, int, int, float]] = []
+    for dir_name in sorted(dir_total.keys()):
+        owned = dir_owned.get(dir_name, 0)
+        total = dir_total[dir_name]
+        pct = owned / total * 100 if total > 0 else 0
+        if owned > 0:
+            expertise_by_dir.append((dir_name, owned, total, pct))
+    expertise_by_dir.sort(key=lambda x: x[1], reverse=True)
+
+    # Score share
+    score_share = total_score / repo_total_score if repo_total_score > 0 else 0
+
+    # Risk summary
+    risk_lines: list[str] = []
+    sole_count = len(sole_expert_files)
+    sole_pct = sole_count / analysis.total_files * 100 if analysis.total_files > 0 else 0
+    if sole_count > 0:
+        risk_lines.append(
+            f"You are the SOLE expert on {sole_count} file(s) "
+            f"({sole_pct:.0f}% of the codebase). "
+            f"If you left, no one else has significant expertise on these."
+        )
+    if files_owned > 0:
+        owned_pct = files_owned / analysis.total_files * 100 if analysis.total_files > 0 else 0
+        risk_lines.append(
+            f"You are the top expert on {files_owned} file(s) ({owned_pct:.0f}% of the codebase)."
+        )
+    if score_share > 0.5:
+        risk_lines.append(
+            f"You hold {score_share * 100:.0f}% of the total codebase expertise. "
+            f"This is a significant concentration risk."
+        )
+    if not risk_lines:
+        risk_lines.append("Your contributions are well distributed — low bus factor risk.")
+
+    # Impact statement
+    if sole_count > 0:
+        impact = (
+            f"If you left tomorrow, {sole_count} file(s) would have no expert. "
+            f"That's {sole_pct:.0f}% of the codebase at critical risk."
+        )
+    elif files_owned > 0:
+        impact = (
+            f"If you left, {files_owned} file(s) would lose their top expert, "
+            f"but other contributors have some expertise."
+        )
+    else:
+        impact = "Your contributions are spread across files with other experts — low single-point-of-failure risk."
+
+    return PersonalReport(
+        author=author_name,
+        email=email,
+        total_files=analysis.total_files,
+        files_touched=files_touched,
+        files_owned=files_owned,
+        sole_expert_files=sole_expert_files,
+        total_commits=summary.total_commits if summary else 0,
+        total_lines=summary.total_lines if summary else 0,
+        total_score=total_score,
+        repo_score_share=score_share,
+        top_files=top_files,
+        expertise_by_directory=expertise_by_dir,
+        risk_summary=risk_lines,
+        impact_statement=impact,
+    )
+
+
 def generate_treemap_html(analysis: RepoAnalysis) -> str:
     """Generate an interactive ownership treemap as self-contained HTML.
 

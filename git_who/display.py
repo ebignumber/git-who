@@ -8,7 +8,7 @@ from rich.panel import Panel
 from rich.text import Text
 from rich.columns import Columns
 
-from .analyzer import RepoAnalysis, FileOwnership, Hotspot, DirectoryExpertise, HealthReport, DiffAnalysis, OnboardingGuide
+from .analyzer import RepoAnalysis, FileOwnership, Hotspot, DirectoryExpertise, HealthReport, DiffAnalysis, OnboardingGuide, PersonalReport
 
 
 def _score_bar(score: float, max_score: float, width: int = 20) -> str:
@@ -752,6 +752,104 @@ def display_onboarding(console: Console, guide: OnboardingGuide) -> None:
         for dir_name, avg_bf, files, top_expert in guide.directories_by_accessibility:
             bf_color = "green" if avg_bf >= 3 else "yellow" if avg_bf >= 2 else "red"
             table.add_row(dir_name, f"[{bf_color}]{avg_bf}[/]", str(files), top_expert)
+
+        console.print(table)
+        console.print()
+
+
+def display_personal(console: Console, report: PersonalReport) -> None:
+    """Display personal expertise report with visual flair."""
+    sole_count = len(report.sole_expert_files)
+    sole_pct = sole_count / report.total_files * 100 if report.total_files > 0 else 0
+    owned_pct = report.files_owned / report.total_files * 100 if report.total_files > 0 else 0
+    share_pct = report.repo_score_share * 100
+
+    # Header panel
+    header_lines = [
+        f"  Files touched: {report.files_touched}/{report.total_files}   |   "
+        f"Files owned (top expert): {report.files_owned}   |   "
+        f"Sole expert: {sole_count}",
+        f"  Total commits: {report.total_commits}   |   "
+        f"Total lines: {report.total_lines:,}   |   "
+        f"Expertise share: {share_pct:.1f}%",
+    ]
+    console.print(Panel(
+        "\n".join(header_lines),
+        title=f"[bold]{report.author}[/bold]  <{report.email}>",
+        subtitle="Your Expertise Profile",
+        border_style="cyan",
+    ))
+
+    # Impact statement
+    if sole_count > 0:
+        impact_style = "bold red" if sole_pct > 20 else "bold yellow" if sole_pct > 5 else "yellow"
+        console.print(f"\n  [{impact_style}]{report.impact_statement}[/]")
+    else:
+        console.print(f"\n  [green]{report.impact_statement}[/]")
+    console.print()
+
+    # Risk summary
+    for line in report.risk_summary:
+        if "SOLE" in line or "concentration" in line.lower():
+            console.print(f"  [red bold]![/] {line}")
+        else:
+            console.print(f"  [dim]*[/] {line}")
+    console.print()
+
+    # Top files table
+    if report.top_files:
+        table = Table(title="  Your Top Files by Expertise", show_header=True, expand=False)
+        table.add_column("#", style="dim", min_width=3, justify="right")
+        table.add_column("File", style="cyan", min_width=35)
+        table.add_column("Score", justify="right", min_width=8)
+        table.add_column("Share", justify="right", min_width=8)
+        table.add_column("", min_width=20)
+
+        max_score = report.top_files[0][1] if report.top_files else 1.0
+        for i, (filepath, score, share) in enumerate(report.top_files, 1):
+            share_str = f"{share * 100:.0f}%"
+            bar = _score_bar(score, max_score)
+            share_color = "red" if share >= 0.8 else "yellow" if share >= 0.5 else "green"
+            table.add_row(str(i), filepath, f"{score:.1f}", f"[{share_color}]{share_str}[/]", bar)
+
+        console.print(table)
+        console.print()
+
+    # Sole expert files (the viral part)
+    if report.sole_expert_files:
+        table = Table(
+            title=f"  [red bold]Files That Depend ONLY on You ({sole_count})[/]",
+            show_header=True,
+            expand=False,
+        )
+        table.add_column("#", style="dim", min_width=3, justify="right")
+        table.add_column("File", style="red", min_width=40)
+
+        for i, filepath in enumerate(sorted(report.sole_expert_files), 1):
+            table.add_row(str(i), filepath)
+            if i >= 20:
+                remaining = sole_count - 20
+                if remaining > 0:
+                    table.add_row("", f"[dim]... +{remaining} more[/]")
+                break
+
+        console.print(table)
+        console.print()
+
+    # Directory breakdown
+    if report.expertise_by_directory:
+        table = Table(title="  Your Ownership by Directory", show_header=True, expand=False)
+        table.add_column("Directory", style="cyan", min_width=20)
+        table.add_column("Owned", justify="right", min_width=6)
+        table.add_column("Total", justify="right", min_width=6)
+        table.add_column("Coverage", justify="right", min_width=10)
+        table.add_column("", min_width=15)
+
+        for dir_name, owned, total, pct in report.expertise_by_directory[:10]:
+            bar_len = max(1, int(pct / 100 * 10))
+            bar = "\u2588" * bar_len
+            pct_color = "red" if pct > 80 else "yellow" if pct > 50 else "green"
+            table.add_row(dir_name, str(owned), str(total), f"[{pct_color}]{pct:.0f}%[/]", f"[{pct_color}]{bar}[/]")
 
         console.print(table)
         console.print()

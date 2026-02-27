@@ -4,10 +4,11 @@
     <strong>Find out who really knows your code.</strong>
   </p>
   <p align="center">
-    <a href="https://pypi.org/project/git-who/"><img alt="PyPI" src="https://img.shields.io/pypi/v/git-who"></a>
+    <a href="https://github.com/trinarymage/git-who/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/trinarymage/git-who"></a>
     <a href="https://github.com/trinarymage/git-who/actions"><img alt="CI" src="https://github.com/trinarymage/git-who/actions/workflows/ci.yml/badge.svg"></a>
     <a href="https://github.com/trinarymage/git-who/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg"></a>
     <img alt="Python 3.9+" src="https://img.shields.io/badge/python-3.9+-blue.svg">
+    <a href="https://github.com/trinarymage/git-who/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/trinarymage/git-who?style=social"></a>
   </p>
 </p>
 
@@ -49,17 +50,17 @@ Here's what git-who finds when you run it on [Flask](https://github.com/pallets/
   </picture>
 </p>
 
-**854 contributors, but 98% of files depend on a single person.** That's the kind of insight `git-who` surfaces in seconds. Try it on your own repo — you might be surprised.
+**37 contributors, but 88% of expertise held by one person.** That's the kind of insight `git-who` surfaces in seconds. Try it on your own repo — you might be surprised.
 
 [See the full interactive treemap for Flask](https://trinarymage.github.io/git-who/demo-flask-map.html) | [Full health report](https://trinarymage.github.io/git-who/demo-flask-report.html)
 
 ## Installation
 
 ```bash
-pip install git-who
+pip install git+https://github.com/trinarymage/git-who.git
 ```
 
-Or install from source:
+Or clone and install locally:
 
 ```bash
 git clone https://github.com/trinarymage/git-who.git
@@ -430,7 +431,7 @@ Keep CODEOWNERS in sync by running it in CI:
 ```yaml
 - name: Update CODEOWNERS
   run: |
-    pip install git-who
+    pip install git+https://github.com/trinarymage/git-who.git
     git-who codeowners > .github/CODEOWNERS
     git diff --exit-code .github/CODEOWNERS || echo "::warning::CODEOWNERS is out of date"
 ```
@@ -652,7 +653,7 @@ If you prefer scripting directly:
 ```yaml
 - name: Change risk assessment on PR
   run: |
-    pip install git-who
+    pip install git+https://github.com/trinarymage/git-who.git
     RISK=$(git-who --json diff --base origin/main | jq '.risk_grade')
     echo "Change risk: $RISK"
     git-who --markdown diff --base origin/main > /tmp/risk-report.md
@@ -660,7 +661,7 @@ If you prefer scripting directly:
 
 - name: Check bus factor
   run: |
-    pip install git-who
+    pip install git+https://github.com/trinarymage/git-who.git
     BUS_FACTOR=$(git-who --json | jq '.bus_factor')
     if [ "$BUS_FACTOR" -lt 2 ]; then
       echo "::warning::Repository bus factor is $BUS_FACTOR"
@@ -668,7 +669,7 @@ If you prefer scripting directly:
 
 - name: Post expertise report as PR comment
   run: |
-    pip install git-who
+    pip install git+https://github.com/trinarymage/git-who.git
     git-who --markdown > /tmp/report.md
     gh pr comment ${{ github.event.pull_request.number }} --body-file /tmp/report.md
 ```

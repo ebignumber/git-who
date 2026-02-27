@@ -1,52 +1,229 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>git-who — Live Demos</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>git-who &mdash; Find out who really knows your code</title>
+<meta name="description" content="Analyze git history to find expertise, bus factor, hotspots, and code ownership. Weighted by recency, frequency, and volume.">
+<meta property="og:title" content="git-who — Find out who really knows your code">
+<meta property="og:description" content="Expertise analysis, bus factor, hotspots, and code ownership from git history. Try git-who me to see YOUR impact.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://trinarymage.github.io/git-who/">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="git-who — Find out who really knows your code">
+<meta name="twitter:description" content="Run git-who me on your repo. You might be surprised how much depends on you.">
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0d1117; color: #c9d1d9; min-height: 100vh; }
-  .container { max-width: 800px; margin: 0 auto; padding: 60px 20px; }
-  h1 { font-size: 2.5em; margin-bottom: 8px; color: #f0f6fc; }
-  .tagline { font-size: 1.2em; color: #8b949e; margin-bottom: 40px; }
-  .card { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 24px; margin-bottom: 20px; transition: border-color 0.2s; }
-  .card:hover { border-color: #58a6ff; }
-  .card h2 { font-size: 1.3em; margin-bottom: 8px; color: #f0f6fc; }
-  .card p { color: #8b949e; margin-bottom: 16px; line-height: 1.5; }
-  .card a { display: inline-block; background: #238636; color: #fff; padding: 8px 20px; border-radius: 6px; text-decoration: none; font-weight: 600; margin-right: 10px; }
-  .card a:hover { background: #2ea043; }
-  .card a.secondary { background: transparent; border: 1px solid #30363d; color: #c9d1d9; }
-  .card a.secondary:hover { border-color: #58a6ff; color: #58a6ff; }
-  .repo-link { display: inline-block; margin-top: 30px; color: #58a6ff; text-decoration: none; font-size: 1.1em; }
-  .repo-link:hover { text-decoration: underline; }
-  .badge { display: inline-block; background: #30363d; color: #c9d1d9; padding: 2px 8px; border-radius: 4px; font-size: 0.85em; margin-left: 8px; }
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--dim:#8b949e;--accent:#58a6ff;--green:#3fb950;--yellow:#d29922;--red:#f85149;--purple:#bc8cff}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);line-height:1.6}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+.container{max-width:900px;margin:0 auto;padding:0 20px}
+header{text-align:center;padding:60px 0 40px}
+header h1{font-size:2.5em;margin-bottom:10px;letter-spacing:-0.02em}
+header p{font-size:1.2em;color:var(--dim);max-width:600px;margin:0 auto 30px}
+.badges{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:30px}
+.badges img{height:22px}
+.cta{display:inline-block;background:var(--green);color:#000;font-weight:600;padding:12px 28px;border-radius:8px;font-size:1.1em;transition:opacity .2s}
+.cta:hover{opacity:.85;text-decoration:none}
+.cta-secondary{background:var(--surface);color:var(--text);border:1px solid var(--border);margin-left:12px}
+.terminal{background:#0d1117;border:1px solid var(--border);border-radius:12px;padding:20px 24px;font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:13px;line-height:1.7;overflow-x:auto;margin:24px 0;position:relative}
+.terminal::before{content:'';position:absolute;top:12px;left:16px;width:12px;height:12px;border-radius:50%;background:#f85149;box-shadow:20px 0 0 #d29922,40px 0 0 #3fb950}
+.terminal pre{margin-top:16px;white-space:pre;color:var(--text)}
+.prompt{color:var(--green)}
+.comment{color:var(--dim)}
+.highlight{color:var(--yellow)}
+.danger{color:var(--red)}
+.ok{color:var(--green)}
+section{padding:40px 0}
+section h2{font-size:1.8em;margin-bottom:16px;letter-spacing:-0.01em}
+section p{color:var(--dim);margin-bottom:16px}
+.features{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px;margin:30px 0}
+.feature{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px}
+.feature h3{margin-bottom:8px;font-size:1em}
+.feature p{font-size:.9em;margin:0}
+.comparison{width:100%;border-collapse:collapse;margin:20px 0}
+.comparison th,.comparison td{padding:10px 14px;text-align:left;border-bottom:1px solid var(--border)}
+.comparison th{color:var(--dim);font-weight:500;font-size:.85em;text-transform:uppercase;letter-spacing:.05em}
+.comparison td:first-child{font-weight:500}
+.check{color:var(--green)}
+.cross{color:var(--dim)}
+footer{text-align:center;padding:40px 0;color:var(--dim);font-size:.9em;border-top:1px solid var(--border)}
+@media(max-width:600px){header h1{font-size:1.8em}header p{font-size:1em}.terminal{font-size:11px;padding:14px 16px}}
 </style>
 </head>
 <body>
+
+<header>
 <div class="container">
-  <h1>git-who</h1>
-  <p class="tagline">Find out who really knows your code.</p>
-
-  <div class="card">
-    <h2>Interactive Ownership Map <span class="badge">Flask</span></h2>
-    <p>Explore Flask's codebase as an interactive treemap. Files are sized by activity and colored by bus factor risk. Click to zoom into directories.</p>
-    <a href="flask-map.html">View Map</a>
-  </div>
-
-  <div class="card">
-    <h2>Health Report <span class="badge">Flask</span></h2>
-    <p>A complete health report for the Flask project — health grade, expert leaderboard, hotspot analysis, bus factor distribution, and more.</p>
-    <a href="flask-report.html">View Report</a>
-  </div>
-
-  <div class="card">
-    <h2>Try it on your own repo</h2>
-    <p>Install git-who and run it on any git repository. Zero config — just run <code style="background:#30363d;padding:2px 6px;border-radius:4px;">git-who</code> in your project.</p>
-    <a href="https://github.com/trinarymage/git-who#installation" class="secondary">Installation Guide</a>
-  </div>
-
-  <a class="repo-link" href="https://github.com/trinarymage/git-who">→ View on GitHub</a>
+<h1>git-who</h1>
+<p>Find out who really knows your code. Expertise analysis, bus factor, hotspots, and code ownership from git history.</p>
+<div class="badges">
+<img alt="Release" src="https://img.shields.io/github/v/release/trinarymage/git-who">
+<img alt="CI" src="https://github.com/trinarymage/git-who/actions/workflows/ci.yml/badge.svg">
+<img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg">
+<img alt="Python 3.9+" src="https://img.shields.io/badge/python-3.9+-blue.svg">
+<img alt="Stars" src="https://img.shields.io/github/stars/trinarymage/git-who?style=social">
 </div>
+<a class="cta" href="https://github.com/trinarymage/git-who">View on GitHub</a>
+<a class="cta cta-secondary" href="#install">Install Now</a>
+<a class="cta cta-secondary" href="demo-flask-map.html">Live Demo: Flask Treemap</a>
+</div>
+</header>
+
+<section>
+<div class="container">
+<h2>Try <code>git-who me</code> &mdash; your personal expertise profile</h2>
+<p>See what files depend on YOU. Run it on your company's repo &mdash; you might be surprised.</p>
+<div class="terminal">
+<pre><span class="prompt">$</span> git-who me
+
+<span class="comment">╭──────────────────── Alice  &lt;alice@company.com&gt; ────────────────────╮</span>
+<span class="comment">│</span>   Files touched: 87/142   |   Files owned: 52   |   Sole expert: 23
+<span class="comment">│</span>   Total commits: 340   |   Lines: 24,800   |   Expertise share: <span class="highlight">48.2%</span>
+<span class="comment">╰──────────────────────── Your Expertise Profile ────────────────────╯</span>
+
+  <span class="danger">If you left tomorrow, 23 file(s) would have no expert.</span>
+  <span class="danger">That's 16% of the codebase at critical risk.</span>
+
+  <span class="danger">!</span> You are the SOLE expert on 23 file(s) (16% of the codebase).
+  * You are the top expert on 52 file(s) (37% of the codebase).
+  <span class="danger">!</span> You hold <span class="highlight">48%</span> of the total codebase expertise.
+
+       Your Top Files by Expertise
+  # | File                     | Score | Share
+  1 | src/payment/billing.py   |  28.3 | <span class="danger">100%</span> ████████████████████
+  2 | src/core/engine.py       |  24.1 | <span class="danger"> 89%</span> █████████████████
+  3 | src/auth/middleware.py   |  19.4 | <span class="highlight"> 72%</span> ██████████████</pre>
+</div>
+</div>
+</section>
+
+<section>
+<div class="container">
+<h2>Run it on Flask (69k+ stars) &mdash; the results are alarming</h2>
+<div class="terminal">
+<pre><span class="prompt">$</span> git-who health
+
+<span class="comment">╭─────────────────── Knowledge Health Grade ───────────────────╮</span>
+<span class="comment">│</span>   <span class="danger">F</span>    (19.2/100)
+<span class="comment">╰──────────── How well is knowledge distributed? ──────────────╯</span>
+  Bus Factor                 <span class="danger">1</span>
+  Files Analyzed             266
+  Contributors               37
+  Files at Risk (BF=1)       <span class="danger">143 (54%)</span>
+  Hotspots                   129
+  Knowledge Concentration    <span class="danger">88%</span> held by top contributor
+
+  <span class="danger">CRITICAL: Bus factor is 1</span> &mdash; a single departure could cripple the project
+  143 files (54%) have bus factor = 1</pre>
+</div>
+<p><strong>37 contributors, but 88% of expertise held by one person.</strong> git-who surfaces this in seconds.</p>
+</div>
+</section>
+
+<section id="install">
+<div class="container">
+<h2>Install in 10 seconds</h2>
+<div class="terminal">
+<pre><span class="prompt">$</span> pip install git+https://github.com/trinarymage/git-who.git
+
+<span class="prompt">$</span> cd your-project
+<span class="prompt">$</span> git-who me          <span class="comment"># Your personal profile</span>
+<span class="prompt">$</span> git-who health      <span class="comment"># Letter grade for knowledge distribution</span>
+<span class="prompt">$</span> git-who hotspots    <span class="comment"># Find your riskiest code</span>
+<span class="prompt">$</span> git-who diff        <span class="comment"># Risk assessment for current changes</span>
+<span class="prompt">$</span> git-who map         <span class="comment"># Interactive ownership treemap</span></pre>
+</div>
+</div>
+</section>
+
+<section>
+<div class="container">
+<h2>22 features. Zero config.</h2>
+<div class="features">
+<div class="feature">
+<h3>Personal Profile</h3>
+<p><code>git-who me</code> &mdash; See your impact, sole-expert files, and what happens if you leave.</p>
+</div>
+<div class="feature">
+<h3>Change Risk Assessment</h3>
+<p><code>git-who diff</code> &mdash; Risk grade (A-F) per PR. Know before you merge.</p>
+</div>
+<div class="feature">
+<h3>Health Grade</h3>
+<p><code>git-who health</code> &mdash; Letter grade for knowledge distribution. Instantly shareable.</p>
+</div>
+<div class="feature">
+<h3>Hotspot Detection</h3>
+<p><code>git-who hotspots</code> &mdash; High churn + low bus factor = your riskiest code.</p>
+</div>
+<div class="feature">
+<h3>Interactive Treemap</h3>
+<p><code>git-who map</code> &mdash; Zoomable, color-coded ownership visualization.</p>
+</div>
+<div class="feature">
+<h3>CODEOWNERS Generation</h3>
+<p><code>git-who codeowners</code> &mdash; Auto-generate from actual expertise data.</p>
+</div>
+<div class="feature">
+<h3>Reviewer Suggestions</h3>
+<p><code>git-who review</code> &mdash; Expertise-based reviewers, not random assignment.</p>
+</div>
+<div class="feature">
+<h3>GitHub Action</h3>
+<p>Run in CI with PR comments, bus factor gates, and risk reports.</p>
+</div>
+<div class="feature">
+<h3>Trend Analysis</h3>
+<p><code>git-who trend</code> &mdash; Track bus factor over time with sparklines.</p>
+</div>
+</div>
+</div>
+</section>
+
+<section>
+<div class="container">
+<h2>Live Demos</h2>
+<p>These are real outputs from running git-who on <a href="https://github.com/pallets/flask">Flask</a> (69k+ stars). No cherry-picking — just raw analysis.</p>
+<div class="features">
+<div class="feature">
+<h3><a href="demo-flask-map.html">Interactive Ownership Treemap</a></h3>
+<p>Zoomable visualization of Flask's entire codebase. Click directories to drill in. Red = bus factor 1. Size = activity.</p>
+</div>
+<div class="feature">
+<h3><a href="demo-flask-report.html">Knowledge Health Report</a></h3>
+<p>Full health analysis: grade, contributors, hotspots, bus factor distribution — all in one shareable page.</p>
+</div>
+</div>
+</div>
+</section>
+
+<section>
+<div class="container">
+<h2>vs. Alternatives</h2>
+<table class="comparison">
+<thead><tr><th>Feature</th><th>git-who</th><th>git-fame</th><th>git-extras</th></tr></thead>
+<tbody>
+<tr><td>Personal expertise profile</td><td class="check">Yes</td><td class="cross">No</td><td class="cross">No</td></tr>
+<tr><td>Change risk assessment</td><td class="check">Yes</td><td class="cross">No</td><td class="cross">No</td></tr>
+<tr><td>Expertise scoring (recency-weighted)</td><td class="check">Yes</td><td class="cross">Line count only</td><td class="cross">No</td></tr>
+<tr><td>Bus factor (per-file)</td><td class="check">Yes</td><td class="cross">No</td><td class="cross">No</td></tr>
+<tr><td>Interactive treemap</td><td class="check">Yes</td><td class="cross">No</td><td class="cross">No</td></tr>
+<tr><td>CODEOWNERS generation</td><td class="check">Yes</td><td class="cross">No</td><td class="cross">No</td></tr>
+<tr><td>GitHub Action</td><td class="check">Yes</td><td class="cross">No</td><td class="cross">No</td></tr>
+<tr><td>Health grade</td><td class="check">Yes</td><td class="cross">No</td><td class="cross">No</td></tr>
+<tr><td>Hotspot detection</td><td class="check">Yes</td><td class="cross">No</td><td class="cross">No</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<footer>
+<div class="container">
+<p>MIT License &middot; <a href="https://github.com/trinarymage/git-who">GitHub</a></p>
+</div>
+</footer>
+
 </body>
 </html>

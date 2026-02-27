@@ -2,6 +2,19 @@
 
 All notable changes to git-who will be documented in this file.
 
+## [0.12.0] - 2026-02-27
+
+### Added
+- `git-who me` — Personal expertise profile
+  - Auto-detects identity from git config (name or email)
+  - Shows files you own, files where you're the sole expert
+  - Impact statement: "If you left, X files would have no expert"
+  - Risk summary with concentration warnings
+  - Top files by expertise score with share percentages
+  - Directory ownership breakdown
+  - Supports `--json` output and looking up any author by name
+  - 15 new tests (total: 173, all passing)
+
 ## [0.11.0] - 2026-02-27
 
 ### Added

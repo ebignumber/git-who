@@ -29,6 +29,7 @@ from .analyzer import (
     analyze_diff,
     generate_treemap_html,
     generate_onboarding,
+    generate_personal_report,
 )
 from .display import (
     display_overview,
@@ -45,6 +46,7 @@ from .display import (
     display_health,
     display_diff,
     display_onboarding,
+    display_personal,
 )
 
 
@@ -1020,6 +1022,74 @@ def _display_trend(console: Console, trend_data: list) -> None:
 
     console.print(f"\n  Sparkline: [bold cyan]{sparkline}[/]  ({first.date} \u2192 {last.date})")
     console.print()
+
+
+@main.command()
+@click.argument("author", required=False, default=None)
+@click.pass_context
+def me(ctx: click.Context, author: str | None) -> None:
+    """Show YOUR personal expertise profile.
+
+    Auto-detects your identity from git config. Shows what files you own,
+    where you're the sole expert, and what happens if you leave.
+
+    Run it on your company's repo — you might be surprised.
+
+    \b
+    Examples:
+        git-who me                        # Auto-detect from git config
+        git-who me "Alice"                # Show profile for Alice
+        git-who --json me                 # JSON output
+    """
+    path = ctx.obj["path"]
+    as_json = ctx.obj["json"]
+    since = ctx.obj["since"]
+    ignore = ctx.obj["ignore"]
+    console = Console(stderr=True) if as_json else Console()
+
+    try:
+        analysis = _analyze_with_status(console, path, since=since, ignore=ignore, half_life_days=ctx.obj["half_life_days"])
+    except RuntimeError as e:
+        console.print(f"[red]Error:[/] {e}")
+        sys.exit(1)
+
+    if analysis.total_files == 0:
+        console.print("[yellow]No files found in git history.[/]")
+        sys.exit(0)
+
+    try:
+        report = generate_personal_report(analysis, author_name=author)
+    except RuntimeError as e:
+        console.print(f"[red]Error:[/] {e}")
+        sys.exit(1)
+
+    if as_json:
+        result = {
+            "author": report.author,
+            "email": report.email,
+            "total_files": report.total_files,
+            "files_touched": report.files_touched,
+            "files_owned": report.files_owned,
+            "sole_expert_files": report.sole_expert_files,
+            "sole_expert_count": len(report.sole_expert_files),
+            "total_commits": report.total_commits,
+            "total_lines": report.total_lines,
+            "total_score": round(report.total_score, 2),
+            "repo_score_share": round(report.repo_score_share, 4),
+            "top_files": [
+                {"file": f, "score": round(s, 2), "share": round(sh, 4)}
+                for f, s, sh in report.top_files
+            ],
+            "expertise_by_directory": [
+                {"directory": d, "owned": o, "total": t, "coverage_pct": round(p, 1)}
+                for d, o, t, p in report.expertise_by_directory
+            ],
+            "risk_summary": report.risk_summary,
+            "impact_statement": report.impact_statement,
+        }
+        print(json.dumps(result, indent=2))
+    else:
+        display_personal(console, report)
 
 
 _SAMPLE_CONFIG = """\

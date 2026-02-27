@@ -13,6 +13,7 @@ from git_who.analyzer import (
     FileExpertise,
     FileOwnership,
     RepoAnalysis,
+    AuthorSummary,
     compute_expertise_score,
     compute_bus_factor,
     suggest_reviewers,
@@ -26,6 +27,8 @@ from git_who.analyzer import (
     format_codeowners,
     compute_health,
     generate_onboarding,
+    generate_personal_report,
+    _find_author_in_analysis,
     _matches_any_pattern,
     FileOwnership,
     Hotspot,
@@ -1510,3 +1513,204 @@ class TestOnboarding:
         assert len(guide.mentors) == 0
         assert len(guide.starter_files) == 0
         assert len(guide.avoid_files) == 0
+
+
+class TestPersonalReport:
+    """Tests for the git-who me command (personal expertise report)."""
+
+    def _make_analysis(self) -> RepoAnalysis:
+        """Create test analysis with varied ownership patterns."""
+        now = datetime.now(timezone.utc)
+        analysis = RepoAnalysis(path="/tmp/test-repo")
+
+        # File owned solely by Alice (bus factor 1)
+        analysis.files["src/core/engine.py"] = FileOwnership(
+            file="src/core/engine.py",
+            experts=[
+                FileExpertise(author="Alice", file="src/core/engine.py", commits=50,
+                              lines_added=2000, lines_deleted=500, last_commit=now, score=30.0),
+            ],
+            bus_factor=1,
+        )
+
+        # File owned solely by Alice (another BF=1)
+        analysis.files["src/core/parser.py"] = FileOwnership(
+            file="src/core/parser.py",
+            experts=[
+                FileExpertise(author="Alice", file="src/core/parser.py", commits=25,
+                              lines_added=800, lines_deleted=200, last_commit=now, score=18.0),
+            ],
+            bus_factor=1,
+        )
+
+        # Shared file — Alice is top, but Bob also contributes
+        analysis.files["src/utils.py"] = FileOwnership(
+            file="src/utils.py",
+            experts=[
+                FileExpertise(author="Alice", file="src/utils.py", commits=20,
+                              lines_added=500, lines_deleted=100, last_commit=now, score=15.0),
+                FileExpertise(author="Bob", file="src/utils.py", commits=15,
+                              lines_added=300, lines_deleted=50, last_commit=now, score=12.0),
+                FileExpertise(author="Charlie", file="src/utils.py", commits=5,
+                              lines_added=100, lines_deleted=20, last_commit=now, score=5.0),
+            ],
+            bus_factor=3,
+        )
+
+        # File owned by Bob
+        analysis.files["tests/test_utils.py"] = FileOwnership(
+            file="tests/test_utils.py",
+            experts=[
+                FileExpertise(author="Bob", file="tests/test_utils.py", commits=10,
+                              lines_added=200, lines_deleted=30, last_commit=now, score=8.0),
+                FileExpertise(author="Charlie", file="tests/test_utils.py", commits=8,
+                              lines_added=150, lines_deleted=20, last_commit=now, score=6.0),
+            ],
+            bus_factor=2,
+        )
+
+        # File Charlie touched but doesn't own
+        analysis.files["docs/README.md"] = FileOwnership(
+            file="docs/README.md",
+            experts=[
+                FileExpertise(author="Charlie", file="docs/README.md", commits=3,
+                              lines_added=50, lines_deleted=10, last_commit=now, score=4.0),
+                FileExpertise(author="Alice", file="docs/README.md", commits=1,
+                              lines_added=10, lines_deleted=0, last_commit=now, score=1.0),
+            ],
+            bus_factor=2,
+        )
+
+        analysis.authors = {
+            "Alice": AuthorSummary(author="Alice", files_owned=3, total_commits=96, total_lines=4110, avg_score=16.0),
+            "Bob": AuthorSummary(author="Bob", files_owned=1, total_commits=25, total_lines=730, avg_score=10.0),
+            "Charlie": AuthorSummary(author="Charlie", files_owned=1, total_commits=16, total_lines=350, avg_score=5.0),
+        }
+        analysis.author_emails = {
+            "Alice": "alice@company.com",
+            "Bob": "bob@company.com",
+            "Charlie": "charlie@gmail.com",
+        }
+        analysis.bus_factor = 2
+        analysis.total_files = 5
+        analysis.total_authors = 3
+        return analysis
+
+    def test_personal_report_basic(self):
+        """Test basic personal report generation."""
+        analysis = self._make_analysis()
+        report = generate_personal_report(analysis, author_name="Alice")
+        assert report.author == "Alice"
+        assert report.email == "alice@company.com"
+        assert report.files_owned == 3  # engine.py, parser.py, utils.py
+        assert report.files_touched == 4  # engine, parser, utils, README
+        assert report.total_files == 5
+
+    def test_sole_expert_files(self):
+        """Test that sole expert files are correctly identified."""
+        analysis = self._make_analysis()
+        report = generate_personal_report(analysis, author_name="Alice")
+        assert len(report.sole_expert_files) == 2
+        assert "src/core/engine.py" in report.sole_expert_files
+        assert "src/core/parser.py" in report.sole_expert_files
+
+    def test_no_sole_expert(self):
+        """Test report for an author with no sole-expert files."""
+        analysis = self._make_analysis()
+        report = generate_personal_report(analysis, author_name="Bob")
+        assert len(report.sole_expert_files) == 0
+        assert report.files_owned == 1  # test_utils.py
+        assert "no expert" not in report.impact_statement.lower() or "low" in report.impact_statement.lower()
+
+    def test_score_share(self):
+        """Test that repo score share is computed correctly."""
+        analysis = self._make_analysis()
+        report = generate_personal_report(analysis, author_name="Alice")
+        # Alice: 30 + 18 + 15 + 1 = 64 out of total
+        # Total: 30 + 18 + 15 + 12 + 5 + 8 + 6 + 4 + 1 = 99
+        assert 0.6 < report.repo_score_share < 0.7
+
+    def test_top_files_sorted_by_score(self):
+        """Test that top files are sorted by score descending."""
+        analysis = self._make_analysis()
+        report = generate_personal_report(analysis, author_name="Alice")
+        scores = [s for _, s, _ in report.top_files]
+        assert scores == sorted(scores, reverse=True)
+        assert report.top_files[0][0] == "src/core/engine.py"  # highest score
+
+    def test_directory_expertise(self):
+        """Test directory breakdown."""
+        analysis = self._make_analysis()
+        report = generate_personal_report(analysis, author_name="Alice")
+        dir_names = [d for d, _, _, _ in report.expertise_by_directory]
+        assert "src" in dir_names or any("src" in d for d in dir_names)
+
+    def test_risk_summary_sole_expert(self):
+        """Test risk summary mentions sole expertise."""
+        analysis = self._make_analysis()
+        report = generate_personal_report(analysis, author_name="Alice")
+        assert any("SOLE" in line for line in report.risk_summary)
+
+    def test_impact_statement_sole_expert(self):
+        """Test impact statement for author with sole-expert files."""
+        analysis = self._make_analysis()
+        report = generate_personal_report(analysis, author_name="Alice")
+        assert "2 file(s)" in report.impact_statement
+        assert "no expert" in report.impact_statement.lower()
+
+    def test_impact_statement_no_sole(self):
+        """Test impact statement for author without sole-expert files."""
+        analysis = self._make_analysis()
+        report = generate_personal_report(analysis, author_name="Charlie")
+        assert "sole" not in report.impact_statement.lower() or "low" in report.impact_statement.lower()
+
+    def test_author_not_found(self):
+        """Test error when author is not found."""
+        analysis = self._make_analysis()
+        with pytest.raises(RuntimeError, match="not found"):
+            generate_personal_report(analysis, author_name="Nobody")
+
+    def test_find_author_case_insensitive(self):
+        """Test case-insensitive author matching."""
+        analysis = self._make_analysis()
+        result = _find_author_in_analysis(analysis, "alice", "")
+        assert result == "Alice"
+
+    def test_find_author_by_email(self):
+        """Test author matching by email."""
+        analysis = self._make_analysis()
+        result = _find_author_in_analysis(analysis, "", "bob@company.com")
+        assert result == "Bob"
+
+    def test_find_author_partial_name(self):
+        """Test partial name matching."""
+        analysis = self._make_analysis()
+        # "Ali" should match "Alice"
+        result = _find_author_in_analysis(analysis, "Ali", "")
+        assert result == "Alice"
+
+    def test_personal_report_json_serializable(self):
+        """Test that personal report can be serialized to JSON."""
+        import json
+        analysis = self._make_analysis()
+        report = generate_personal_report(analysis, author_name="Alice")
+        result = {
+            "author": report.author,
+            "files_owned": report.files_owned,
+            "sole_expert_files": report.sole_expert_files,
+            "risk_summary": report.risk_summary,
+            "impact_statement": report.impact_statement,
+        }
+        serialized = json.dumps(result)
+        assert "Alice" in serialized
+        assert "engine.py" in serialized
+
+    def test_empty_repo(self):
+        """Test personal report on empty analysis."""
+        analysis = RepoAnalysis(path="/tmp/empty")
+        analysis.authors = {"Test": AuthorSummary(author="Test", files_owned=0)}
+        analysis.author_emails = {"Test": "test@test.com"}
+        report = generate_personal_report(analysis, author_name="Test")
+        assert report.files_touched == 0
+        assert report.files_owned == 0
+        assert len(report.sole_expert_files) == 0
