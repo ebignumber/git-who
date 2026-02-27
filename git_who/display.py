@@ -8,7 +8,7 @@ from rich.panel import Panel
 from rich.text import Text
 from rich.columns import Columns
 
-from .analyzer import RepoAnalysis, FileOwnership
+from .analyzer import RepoAnalysis, FileOwnership, Hotspot, DirectoryExpertise
 
 
 def _score_bar(score: float, max_score: float, width: int = 20) -> str:
@@ -171,6 +171,205 @@ def display_reviewers(
 
     console.print(table)
     console.print()
+
+
+def display_bus_factor(console: Console, analysis: RepoAnalysis) -> None:
+    """Display dedicated bus factor analysis."""
+    bf_color = "red" if analysis.bus_factor <= 1 else "yellow" if analysis.bus_factor <= 2 else "green"
+
+    console.print(Panel(
+        f"[bold {bf_color}]Repository Bus Factor: {analysis.bus_factor}[/]",
+        title="Bus Factor Analysis",
+        border_style=bf_color,
+    ))
+
+    # Summary by bus factor level
+    bf_counts: dict[int, int] = {}
+    for ownership in analysis.files.values():
+        bf = ownership.bus_factor
+        bf_counts[bf] = bf_counts.get(bf, 0) + 1
+
+    summary_table = Table(title="Files by Bus Factor", show_header=True, expand=False)
+    summary_table.add_column("Bus Factor", justify="center", min_width=12)
+    summary_table.add_column("Files", justify="right", min_width=8)
+    summary_table.add_column("% of Total", justify="right", min_width=10)
+    summary_table.add_column("Risk", min_width=15)
+    summary_table.add_column("", min_width=20)
+
+    total = analysis.total_files
+    for bf in sorted(bf_counts.keys()):
+        count = bf_counts[bf]
+        pct = count / total * 100 if total > 0 else 0
+        risk = "[bold red]CRITICAL" if bf <= 1 else "[yellow]WARNING" if bf <= 2 else "[green]OK"
+        bar = _score_bar(count, total, width=20)
+        summary_table.add_row(str(bf), str(count), f"{pct:.0f}%", risk, bar)
+
+    console.print(summary_table)
+    console.print()
+
+    # Files at risk (bus factor = 1)
+    at_risk = [(f, o) for f, o in analysis.files.items() if o.bus_factor <= 1]
+    if at_risk:
+        at_risk.sort(key=lambda x: x[1].experts[0].score if x[1].experts else 0, reverse=True)
+        risk_table = Table(title="[bold red]Files at Risk[/] (bus factor = 1)", show_header=True, expand=False)
+        risk_table.add_column("File", style="red", min_width=40)
+        risk_table.add_column("Sole Expert", style="green", min_width=20)
+        risk_table.add_column("Score", justify="right", style="yellow", min_width=8)
+        risk_table.add_column("Commits", justify="right", min_width=8)
+
+        for filepath, ownership in at_risk[:20]:
+            if ownership.experts:
+                total_commits = sum(e.commits for e in ownership.experts)
+                risk_table.add_row(
+                    filepath,
+                    ownership.experts[0].author,
+                    f"{ownership.experts[0].score:.1f}",
+                    str(total_commits),
+                )
+
+        remaining = len(at_risk) - 20
+        if remaining > 0:
+            risk_table.add_row(f"... +{remaining} more files", "", "", "")
+
+        console.print(risk_table)
+        console.print(f"\n  [bold red]{len(at_risk)}[/] of {total} files have bus factor = 1 ({len(at_risk) * 100 // max(1, total)}%)")
+    else:
+        console.print("[bold green]  No files with bus factor = 1 — well distributed![/]")
+    console.print()
+
+
+def display_hotspots(console: Console, hotspots: list[Hotspot]) -> None:
+    """Display hotspot analysis — files with high churn and low bus factor."""
+    if not hotspots:
+        console.print("[bold green]  No hotspots found — knowledge is well-distributed across frequently changed files.[/]")
+        return
+
+    console.print(Panel(
+        f"[bold red]{len(hotspots)} hotspot(s)[/] — files changed frequently but understood by only one person",
+        title="Hotspot Analysis",
+        subtitle="high churn + low bus factor = risk",
+        border_style="red",
+    ))
+
+    table = Table(show_header=True, expand=False)
+    table.add_column("File", style="red", min_width=40)
+    table.add_column("Commits", justify="right", min_width=8)
+    table.add_column("Sole Expert", style="green", min_width=20)
+    table.add_column("Score", justify="right", style="yellow", min_width=8)
+    table.add_column("Churn", min_width=15)
+
+    for hotspot in hotspots[:20]:
+        table.add_row(
+            hotspot.file,
+            str(hotspot.total_commits),
+            hotspot.sole_expert or "?",
+            f"{hotspot.expert_score:.1f}",
+            _score_bar(hotspot.churn_rank, 1.0, width=15),
+        )
+
+    remaining = len(hotspots) - 20
+    if remaining > 0:
+        table.add_row(f"... +{remaining} more", "", "", "", "")
+
+    console.print(table)
+    console.print()
+
+
+def display_directories(
+    console: Console,
+    directories: list[DirectoryExpertise],
+) -> None:
+    """Display directory-level expertise aggregation."""
+    if not directories:
+        console.print("[dim]  No directories found.[/]")
+        return
+
+    table = Table(title="Directory Expertise", show_header=True, expand=False)
+    table.add_column("Directory", style="cyan", min_width=25)
+    table.add_column("Files", justify="right", min_width=6)
+    table.add_column("Bus Factor", justify="center", min_width=10)
+    table.add_column("Top Expert", style="green", min_width=20)
+    table.add_column("Hotspots", justify="right", min_width=9)
+
+    for d in directories:
+        bf_color = "red" if d.bus_factor <= 1 else "yellow" if d.bus_factor <= 2 else "green"
+        top_expert = d.experts[0][0] if d.experts else "-"
+        hotspot_str = f"[red]{d.hotspot_count}[/]" if d.hotspot_count > 0 else "[dim]0[/]"
+
+        table.add_row(
+            d.directory,
+            str(d.file_count),
+            f"[{bf_color}]{d.bus_factor}[/]",
+            top_expert,
+            hotspot_str,
+        )
+
+    console.print(table)
+    console.print()
+
+
+def format_markdown(analysis: RepoAnalysis, hotspots: list[Hotspot] | None = None) -> str:
+    """Format analysis results as Markdown for sharing in PRs/docs."""
+    lines = []
+
+    # Header
+    lines.append(f"# git-who report")
+    lines.append("")
+    lines.append(f"**Repository**: `{analysis.path}`  ")
+    lines.append(f"**Files analyzed**: {analysis.total_files}  ")
+    lines.append(f"**Authors**: {analysis.total_authors}  ")
+    bf_emoji = "\u26a0\ufe0f" if analysis.bus_factor <= 1 else "\u2139\ufe0f" if analysis.bus_factor <= 2 else "\u2705"
+    lines.append(f"**Bus Factor**: {analysis.bus_factor} {bf_emoji}")
+    lines.append("")
+
+    # Top contributors
+    lines.append("## Top Contributors")
+    lines.append("")
+    lines.append("| # | Author | Files Owned | Commits | Avg Score |")
+    lines.append("|---|--------|-------------|---------|-----------|")
+
+    sorted_authors = sorted(
+        analysis.authors.values(),
+        key=lambda a: a.avg_score * a.files_owned,
+        reverse=True,
+    )
+    for i, author in enumerate(sorted_authors[:10], 1):
+        lines.append(f"| {i} | {author.author} | {author.files_owned} | {author.total_commits} | {author.avg_score:.1f} |")
+    lines.append("")
+
+    # Bus factor
+    at_risk = [(f, o) for f, o in analysis.files.items() if o.bus_factor <= 1]
+    if at_risk:
+        at_risk.sort(key=lambda x: x[1].experts[0].score if x[1].experts else 0, reverse=True)
+        pct = len(at_risk) * 100 // max(1, analysis.total_files)
+        lines.append(f"## Files at Risk ({len(at_risk)} files, {pct}% of repo)")
+        lines.append("")
+        lines.append("| File | Sole Expert | Score |")
+        lines.append("|------|-------------|-------|")
+        for filepath, ownership in at_risk[:15]:
+            if ownership.experts:
+                lines.append(f"| `{filepath}` | {ownership.experts[0].author} | {ownership.experts[0].score:.1f} |")
+        if len(at_risk) > 15:
+            lines.append(f"| *... +{len(at_risk) - 15} more* | | |")
+        lines.append("")
+
+    # Hotspots
+    if hotspots:
+        lines.append(f"## Hotspots ({len(hotspots)} files)")
+        lines.append("")
+        lines.append("Files with high change frequency and only one expert:")
+        lines.append("")
+        lines.append("| File | Commits | Sole Expert | Score |")
+        lines.append("|------|---------|-------------|-------|")
+        for h in hotspots[:10]:
+            lines.append(f"| `{h.file}` | {h.total_commits} | {h.sole_expert or '?'} | {h.expert_score:.1f} |")
+        if len(hotspots) > 10:
+            lines.append(f"| *... +{len(hotspots) - 10} more* | | | |")
+        lines.append("")
+
+    lines.append("---")
+    lines.append("*Generated by [git-who](https://github.com/trinarymage/git-who)*")
+    return "\n".join(lines)
 
 
 def display_json(analysis: RepoAnalysis) -> dict:

@@ -16,7 +16,11 @@ from git_who.analyzer import (
     suggest_reviewers,
     analyze_repo,
     parse_git_log,
+    find_hotspots,
+    aggregate_directories,
     FileOwnership,
+    Hotspot,
+    DirectoryExpertise,
 )
 
 
@@ -341,3 +345,171 @@ class TestParseGitLog:
         alice_main = data["main.py"]["Alice"]
         assert alice_main.commits >= 1
         assert alice_main.lines_added > 0
+
+
+class TestHotspots:
+    def test_no_hotspots_when_distributed(self):
+        """No hotspots when all files have high bus factor."""
+        from git_who.analyzer import RepoAnalysis
+        analysis = RepoAnalysis(
+            path="/test",
+            files={
+                "a.py": FileOwnership(
+                    file="a.py",
+                    bus_factor=3,
+                    experts=[
+                        FileExpertise(author="Alice", file="a.py", score=10, commits=5),
+                        FileExpertise(author="Bob", file="a.py", score=8, commits=4),
+                        FileExpertise(author="Charlie", file="a.py", score=6, commits=3),
+                    ],
+                ),
+            },
+            total_files=1,
+        )
+        spots = find_hotspots(analysis)
+        assert len(spots) == 0
+
+    def test_finds_single_expert_high_churn(self):
+        """Finds files with single expert and many commits."""
+        from git_who.analyzer import RepoAnalysis
+        analysis = RepoAnalysis(
+            path="/test",
+            files={
+                "risky.py": FileOwnership(
+                    file="risky.py",
+                    bus_factor=1,
+                    experts=[
+                        FileExpertise(author="Alice", file="risky.py", score=20, commits=10),
+                    ],
+                ),
+                "safe.py": FileOwnership(
+                    file="safe.py",
+                    bus_factor=3,
+                    experts=[
+                        FileExpertise(author="Alice", file="safe.py", score=5, commits=5),
+                        FileExpertise(author="Bob", file="safe.py", score=5, commits=5),
+                        FileExpertise(author="Charlie", file="safe.py", score=5, commits=5),
+                    ],
+                ),
+            },
+            total_files=2,
+        )
+        spots = find_hotspots(analysis, min_commits=3)
+        assert len(spots) == 1
+        assert spots[0].file == "risky.py"
+        assert spots[0].sole_expert == "Alice"
+
+    def test_min_commits_filter(self):
+        """Files below min commits threshold are excluded."""
+        from git_who.analyzer import RepoAnalysis
+        analysis = RepoAnalysis(
+            path="/test",
+            files={
+                "low.py": FileOwnership(
+                    file="low.py",
+                    bus_factor=1,
+                    experts=[
+                        FileExpertise(author="Alice", file="low.py", score=5, commits=2),
+                    ],
+                ),
+            },
+            total_files=1,
+        )
+        spots = find_hotspots(analysis, min_commits=3)
+        assert len(spots) == 0
+
+    def test_sorted_by_churn(self):
+        """Hotspots are sorted by churn rank descending."""
+        from git_who.analyzer import RepoAnalysis
+        analysis = RepoAnalysis(
+            path="/test",
+            files={
+                "a.py": FileOwnership(
+                    file="a.py", bus_factor=1,
+                    experts=[FileExpertise(author="Alice", file="a.py", score=5, commits=5)],
+                ),
+                "b.py": FileOwnership(
+                    file="b.py", bus_factor=1,
+                    experts=[FileExpertise(author="Bob", file="b.py", score=10, commits=20)],
+                ),
+            },
+            total_files=2,
+        )
+        spots = find_hotspots(analysis, min_commits=3)
+        assert len(spots) == 2
+        assert spots[0].file == "b.py"  # More churn = first
+
+
+class TestDirectoryAggregation:
+    def test_groups_by_directory(self):
+        """Files are grouped by their top-level directory."""
+        from git_who.analyzer import RepoAnalysis
+        analysis = RepoAnalysis(
+            path="/test",
+            files={
+                "src/a.py": FileOwnership(
+                    file="src/a.py", bus_factor=1,
+                    experts=[FileExpertise(author="Alice", file="src/a.py", score=10, commits=5)],
+                ),
+                "src/b.py": FileOwnership(
+                    file="src/b.py", bus_factor=2,
+                    experts=[
+                        FileExpertise(author="Alice", file="src/b.py", score=5, commits=3),
+                        FileExpertise(author="Bob", file="src/b.py", score=5, commits=3),
+                    ],
+                ),
+                "tests/test_a.py": FileOwnership(
+                    file="tests/test_a.py", bus_factor=1,
+                    experts=[FileExpertise(author="Bob", file="tests/test_a.py", score=8, commits=4)],
+                ),
+            },
+            total_files=3,
+        )
+        dirs = aggregate_directories(analysis, depth=1)
+        dir_names = [d.directory for d in dirs]
+        assert "src" in dir_names
+        assert "tests" in dir_names
+
+        src = next(d for d in dirs if d.directory == "src")
+        assert src.file_count == 2
+
+        tests = next(d for d in dirs if d.directory == "tests")
+        assert tests.file_count == 1
+
+    def test_root_files_grouped(self):
+        """Files in the root directory are grouped under '.'."""
+        from git_who.analyzer import RepoAnalysis
+        analysis = RepoAnalysis(
+            path="/test",
+            files={
+                "main.py": FileOwnership(
+                    file="main.py", bus_factor=1,
+                    experts=[FileExpertise(author="Alice", file="main.py", score=10, commits=5)],
+                ),
+            },
+            total_files=1,
+        )
+        dirs = aggregate_directories(analysis, depth=1)
+        assert len(dirs) == 1
+        assert dirs[0].directory == "."
+
+    def test_directory_bus_factor(self):
+        """Directory bus factor is computed from aggregated scores."""
+        from git_who.analyzer import RepoAnalysis
+        analysis = RepoAnalysis(
+            path="/test",
+            files={
+                "src/a.py": FileOwnership(
+                    file="src/a.py", bus_factor=1,
+                    experts=[FileExpertise(author="Alice", file="src/a.py", score=100, commits=50)],
+                ),
+                "src/b.py": FileOwnership(
+                    file="src/b.py", bus_factor=1,
+                    experts=[FileExpertise(author="Alice", file="src/b.py", score=100, commits=50)],
+                ),
+            },
+            total_files=2,
+        )
+        dirs = aggregate_directories(analysis, depth=1)
+        src = next(d for d in dirs if d.directory == "src")
+        assert src.bus_factor == 1  # All expertise from one person

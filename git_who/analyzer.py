@@ -47,6 +47,29 @@ class AuthorSummary:
 
 
 @dataclass
+class Hotspot:
+    """A file with high change frequency and low bus factor — a risk."""
+
+    file: str
+    bus_factor: int
+    total_commits: int
+    sole_expert: str | None
+    expert_score: float
+    churn_rank: float  # 0-1, higher = more churn
+
+
+@dataclass
+class DirectoryExpertise:
+    """Aggregated expertise data for a directory."""
+
+    directory: str
+    file_count: int = 0
+    bus_factor: int = 0
+    experts: list[tuple[str, float]] = field(default_factory=list)  # (author, aggregate_score)
+    hotspot_count: int = 0
+
+
+@dataclass
 class RepoAnalysis:
     """Complete analysis result for a repository."""
 
@@ -319,3 +342,103 @@ def get_changed_files(cwd: str, base: str = "main") -> list[str]:
         return [f.strip() for f in output.splitlines() if f.strip()]
     except RuntimeError:
         return []
+
+
+def find_hotspots(
+    analysis: RepoAnalysis,
+    min_commits: int = 3,
+    max_bus_factor: int = 1,
+) -> list[Hotspot]:
+    """Find files with high change frequency and low bus factor.
+
+    These are the riskiest files: frequently changed but understood by
+    only one person. If that person leaves, these files become dangerous.
+    """
+    raw_data = {}
+    for filepath, ownership in analysis.files.items():
+        total_commits = sum(e.commits for e in ownership.experts)
+        if total_commits >= min_commits and ownership.bus_factor <= max_bus_factor:
+            raw_data[filepath] = total_commits
+
+    if not raw_data:
+        return []
+
+    # Compute churn rank (normalize commits to 0-1)
+    max_commits = max(raw_data.values())
+
+    hotspots = []
+    for filepath, total_commits in raw_data.items():
+        ownership = analysis.files[filepath]
+        sole_expert = ownership.experts[0].author if ownership.experts else None
+        expert_score = ownership.experts[0].score if ownership.experts else 0.0
+        churn_rank = total_commits / max_commits if max_commits > 0 else 0.0
+
+        hotspots.append(Hotspot(
+            file=filepath,
+            bus_factor=ownership.bus_factor,
+            total_commits=total_commits,
+            sole_expert=sole_expert,
+            expert_score=expert_score,
+            churn_rank=churn_rank,
+        ))
+
+    # Sort by churn_rank descending (most churned first)
+    hotspots.sort(key=lambda h: h.churn_rank, reverse=True)
+    return hotspots
+
+
+def aggregate_directories(
+    analysis: RepoAnalysis,
+    depth: int = 1,
+) -> list[DirectoryExpertise]:
+    """Aggregate expertise data at the directory level.
+
+    Groups files by their directory (at the given depth) and computes
+    aggregate expertise scores and bus factors.
+    """
+    dir_files: dict[str, list[str]] = defaultdict(list)
+    dir_scores: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
+
+    for filepath, ownership in analysis.files.items():
+        parts = Path(filepath).parts
+        if len(parts) <= depth:
+            directory = str(Path(*parts[:-1])) if len(parts) > 1 else "."
+        else:
+            directory = str(Path(*parts[:depth]))
+
+        dir_files[directory].append(filepath)
+        for expert in ownership.experts:
+            dir_scores[directory][expert.author] += expert.score
+
+    results = []
+    for directory, files in sorted(dir_files.items()):
+        scores = dir_scores[directory]
+        sorted_experts = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+
+        # Compute directory-level bus factor
+        total_score = sum(s for _, s in sorted_experts)
+        bus_factor = 0
+        if total_score > 0:
+            cumulative = 0.0
+            for i, (_, score) in enumerate(sorted_experts):
+                cumulative += score
+                if cumulative / total_score >= 0.5:
+                    bus_factor = i + 1
+                    break
+
+        # Count hotspots in this directory
+        hotspot_count = sum(
+            1 for f in files
+            if analysis.files[f].bus_factor <= 1
+            and sum(e.commits for e in analysis.files[f].experts) >= 3
+        )
+
+        results.append(DirectoryExpertise(
+            directory=directory,
+            file_count=len(files),
+            bus_factor=bus_factor,
+            experts=sorted_experts[:5],
+            hotspot_count=hotspot_count,
+        ))
+
+    return results

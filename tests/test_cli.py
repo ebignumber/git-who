@@ -71,7 +71,53 @@ class TestCLI:
         runner = CliRunner()
         result = runner.invoke(main, ["--version"])
         assert result.exit_code == 0
-        assert "0.1.0" in result.output
+        assert "0.2.0" in result.output
+
+    def test_hotspots_command(self, git_repo):
+        runner = CliRunner()
+        result = runner.invoke(main, ["--path", git_repo, "hotspots"])
+        assert result.exit_code == 0
+
+    def test_hotspots_json(self, git_repo):
+        runner = CliRunner()
+        result = runner.invoke(main, ["--path", git_repo, "--json", "hotspots"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert "hotspots" in data
+
+    def test_dirs_command(self, git_repo):
+        runner = CliRunner()
+        result = runner.invoke(main, ["--path", git_repo, "dirs"])
+        assert result.exit_code == 0
+
+    def test_dirs_json(self, git_repo):
+        runner = CliRunner()
+        result = runner.invoke(main, ["--path", git_repo, "--json", "dirs"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert "directories" in data
+
+    def test_markdown_output(self, git_repo):
+        runner = CliRunner()
+        result = runner.invoke(main, ["--path", git_repo, "--markdown"])
+        assert result.exit_code == 0
+        assert "# git-who report" in result.output
+        assert "Top Contributors" in result.output
+        assert "git-who" in result.output
+
+    def test_bus_factor_dedicated(self, git_repo):
+        runner = CliRunner()
+        result = runner.invoke(main, ["--path", git_repo, "bus-factor"])
+        assert result.exit_code == 0
+        assert "Bus Factor" in result.output
+
+    def test_bus_factor_json(self, git_repo):
+        runner = CliRunner()
+        result = runner.invoke(main, ["--path", git_repo, "--json", "bus-factor"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert "repo_bus_factor" in data
+        assert "files_by_bus_factor" in data
 
     def test_invalid_repo(self, tmp_path):
         runner = CliRunner()
