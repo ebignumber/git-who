@@ -82,6 +82,7 @@ git-who file src/main.py       # Expertise for specific files
 git-who review --base main     # Suggest reviewers for current changes
 git-who --markdown             # Markdown report for PRs/docs
 git-who report                 # Beautiful HTML report with charts
+git-who map                    # Interactive ownership treemap
 git-who --html > report.html   # HTML output to stdout
 git-who badge -o badge.svg       # SVG badge for your README
 git-who onboard                  # New contributor onboarding guide
@@ -428,6 +429,22 @@ Then add to your README:
 
 Color-coded: 🟢 green (4+), 🟡 yellow (2-3), 🔴 red (1).
 
+
+### Interactive Ownership Map
+
+Visualize your entire codebase as an interactive treemap. Files are sized by
+activity (commits × lines changed) and colored by bus factor risk. Click
+directories to zoom in, click background to zoom out.
+
+```bash
+git-who map                          # Generate git-who-map.html
+git-who map -o ownership.html        # Custom output path
+git-who map --open                   # Generate and open in browser
+```
+
+The map is a self-contained HTML file — no external dependencies. Share it
+with your team, embed it in documentation, or use it in presentations.
+Every red rectangle is a file that only one person understands.
 ### HTML Reports
 
 Generate beautiful standalone HTML reports with interactive charts:
@@ -587,6 +604,7 @@ If you prefer scripting directly:
 | HTML reports with charts | Yes | No | No |
 | SVG badges for README | Yes | No | No |
 | Onboarding guide generator | Yes | No | No |
+| Interactive ownership treemap | Yes | No | No |
 | Zero config | Yes | Yes | Yes |
 
 ## Pre-commit Hook

@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.8.0] - 2026-02-27
+
+### Added
+- `git-who map` — Interactive ownership treemap visualization
+  - Zoomable treemap: files sized by activity, colored by bus factor risk
+  - Click directories to zoom in, click background to zoom out
+  - Hover tooltips showing expert details, commits, and lines changed
+  - Breadcrumb navigation for easy orientation
+  - Self-contained HTML — no external dependencies, share anywhere
+  - Dark theme with smooth CSS transitions
+- 12 new tests for treemap module (total: 129)
+
+
 ## [0.7.0] - 2026-02-27
 
 ### Added

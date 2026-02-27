@@ -918,3 +918,52 @@ def onboard(ctx: click.Context, top: int) -> None:
             for h in hotspots:
                 console.print(f"  [red]•[/] [bold]{h.file}[/] — {h.sole_expert} is sole expert ({h.commits} commits)")
         console.print()
+
+
+@main.command(name="map")
+@click.option("--output", "-o", default=None, help="Output file path (default: git-who-map.html).")
+@click.option("--open", "open_browser", is_flag=True, help="Open map in browser after generating.")
+@click.pass_context
+def treemap_cmd(ctx: click.Context, output: str | None, open_browser: bool) -> None:
+    """Generate an interactive ownership treemap.
+
+    Creates a beautiful, zoomable treemap visualization of your codebase.
+    Files are sized by activity (commits × lines changed) and colored by
+    bus factor risk. Click directories to zoom in, click background to
+    zoom out.
+
+    \b
+    Examples:
+        git-who map                          # Generate git-who-map.html
+        git-who map -o ownership.html        # Custom output path
+        git-who map --open                   # Generate and open in browser
+    """
+    path = ctx.obj["path"]
+    since = ctx.obj["since"]
+    ignore = ctx.obj["ignore"]
+    console = Console()
+
+    try:
+        analysis = analyze_repo(path, since=since, ignore=ignore)
+    except RuntimeError as e:
+        console.print(f"[red]Error:[/] {e}")
+        sys.exit(1)
+
+    if analysis.total_files == 0:
+        console.print("[yellow]No files found in git history.[/]")
+        sys.exit(0)
+
+    from .treemap import generate_treemap_html
+    html_content = generate_treemap_html(analysis)
+
+    if output is None:
+        output = "git-who-map.html"
+
+    Path(output).write_text(html_content)
+    console.print(f"[green]✓[/] Interactive map written to [bold]{output}[/]")
+    console.print(f"  {analysis.total_files} files · {analysis.total_authors} authors · bus factor {analysis.bus_factor}")
+
+    if open_browser:
+        import webbrowser
+        webbrowser.open(f"file://{Path(output).resolve()}")
+        console.print("  Opened in browser.")
