@@ -23,6 +23,7 @@ from .analyzer import (
     compute_summary,
     compute_trend,
 )
+from .html_report import generate_html_report
 from .display import (
     display_overview,
     display_file_expertise,
@@ -45,11 +46,12 @@ from .display import (
 @click.option("--path", "-p", default=".", help="Path to git repository.")
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
 @click.option("--markdown", "as_md", is_flag=True, help="Output as Markdown (great for PRs and docs).")
+@click.option("--html", "as_html", is_flag=True, help="Output as standalone HTML report.")
 @click.option("--top", "-n", default=10, help="Number of top authors to show.")
 @click.option("--since", default=None, help="Only consider commits after this date (e.g., '6 months ago', '2024-01-01').")
 @click.option("--ignore", multiple=True, help="Glob patterns for files to ignore (e.g., 'vendor/*', '*.min.js').")
 @click.pass_context
-def main(ctx: click.Context, path: str, as_json: bool, as_md: bool, top: int, since: str | None, ignore: tuple[str, ...]) -> None:
+def main(ctx: click.Context, path: str, as_json: bool, as_md: bool, as_html: bool, top: int, since: str | None, ignore: tuple[str, ...]) -> None:
     """Find out who really knows your code.
 
     Analyzes git history to compute expertise scores, bus factor,
@@ -61,6 +63,7 @@ def main(ctx: click.Context, path: str, as_json: bool, as_md: bool, top: int, si
     ctx.obj["path"] = str(Path(path).resolve())
     ctx.obj["json"] = as_json
     ctx.obj["markdown"] = as_md
+    ctx.obj["html"] = as_html
     ctx.obj["top"] = top
     ctx.obj["since"] = since
     ctx.obj["ignore"] = list(ignore) if ignore else None
@@ -74,10 +77,11 @@ def _overview(ctx: click.Context) -> None:
     path = ctx.obj["path"]
     as_json = ctx.obj["json"]
     as_md = ctx.obj["markdown"]
+    as_html = ctx.obj["html"]
     top = ctx.obj["top"]
     since = ctx.obj["since"]
     ignore = ctx.obj["ignore"]
-    console = Console(stderr=True) if as_json or as_md else Console()
+    console = Console(stderr=True) if as_json or as_md or as_html else Console()
 
     try:
         analysis = analyze_repo(path, since=since, ignore=ignore)
@@ -89,7 +93,9 @@ def _overview(ctx: click.Context) -> None:
         console.print("[yellow]No files found in git history.[/]")
         sys.exit(0)
 
-    if as_json:
+    if as_html:
+        print(generate_html_report(analysis))
+    elif as_json:
         print(json.dumps(display_json(analysis), indent=2))
     elif as_md:
         hotspots = find_hotspots(analysis)
@@ -630,3 +636,52 @@ def trend(ctx: click.Context, windows: tuple[str, ...]) -> None:
         print(json.dumps(result, indent=2))
     else:
         display_trend(console, repo_trend)
+
+
+@main.command()
+@click.option("--output", "-o", default=None, help="Output file path (default: git-who-report.html).")
+@click.option("--stale-days", default=180, help="Days without commits to consider stale.")
+@click.option("--open", "open_browser", is_flag=True, help="Open report in browser after generating.")
+@click.pass_context
+def report(ctx: click.Context, output: str | None, stale_days: int, open_browser: bool) -> None:
+    """Generate a beautiful standalone HTML report.
+
+    Creates a self-contained HTML file with interactive charts,
+    expertise analysis, and health scoring. Perfect for sharing
+    in documentation, Slack, or presentations.
+
+    \b
+    Examples:
+        git-who report                       # Generate git-who-report.html
+        git-who report -o health.html        # Custom output path
+        git-who report --open                # Generate and open in browser
+    """
+    path = ctx.obj["path"]
+    since = ctx.obj["since"]
+    ignore = ctx.obj["ignore"]
+    console = Console()
+
+    try:
+        analysis = analyze_repo(path, since=since, ignore=ignore)
+    except RuntimeError as e:
+        console.print(f"[red]Error:[/] {e}")
+        sys.exit(1)
+
+    if analysis.total_files == 0:
+        console.print("[yellow]No files found in git history.[/]")
+        sys.exit(0)
+
+    html_content = generate_html_report(analysis, stale_days=stale_days)
+
+    if output is None:
+        output = "git-who-report.html"
+
+    with open(output, "w") as f:
+        f.write(html_content)
+
+    console.print(f"[green]✓[/] Report saved to [bold]{output}[/]")
+    console.print(f"  {analysis.total_files} files · {analysis.total_authors} authors · bus factor {analysis.bus_factor}")
+
+    if open_browser:
+        import webbrowser
+        webbrowser.open(f"file://{Path(output).resolve()}")

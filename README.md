@@ -81,6 +81,8 @@ git-who dirs                   # Expertise by directory
 git-who file src/main.py       # Expertise for specific files
 git-who review --base main     # Suggest reviewers for current changes
 git-who --markdown             # Markdown report for PRs/docs
+git-who report                 # Beautiful HTML report with charts
+git-who --html > report.html   # HTML output to stdout
 git-who --json                 # Machine-readable JSON output
 ```
 
@@ -370,6 +372,28 @@ Keep CODEOWNERS in sync by running it in CI:
     git diff --exit-code .github/CODEOWNERS || echo "::warning::CODEOWNERS is out of date"
 ```
 
+### HTML Reports
+
+Generate beautiful standalone HTML reports with interactive charts:
+
+```bash
+git-who report                       # Creates git-who-report.html
+git-who report -o health.html        # Custom output path
+git-who report --open                # Generate and open in browser
+git-who --html > report.html         # Pipe HTML to stdout
+```
+
+The HTML report includes:
+- **Health grade** (A-F) with breakdown scores
+- **Interactive charts** — bus factor distribution, top expert impact
+- **Expert leaderboard** with visual impact bars
+- **Hotspot analysis** — risky files highlighted
+- **Directory ownership** map
+- **File churn rankings** and **stale file detection**
+- Dark theme, responsive, self-contained (one file, no dependencies)
+
+Share reports in Slack, embed in wikis, or add to your documentation.
+
 ### Output Formats
 
 ```bash
@@ -504,6 +528,7 @@ If you prefer scripting directly:
 | Health grade (A-F) | Yes | No | No |
 | Trend analysis | Yes (over time) | No | No |
 | Pre-commit hook | Yes | No | No |
+| HTML reports with charts | Yes | No | No |
 | Zero config | Yes | Yes | Yes |
 
 ## Pre-commit Hook
@@ -514,7 +539,7 @@ Use git-who as a [pre-commit](https://pre-commit.com/) hook to monitor bus facto
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/trinarymage/git-who
-    rev: v0.5.0
+    rev: v0.6.0
     hooks:
       - id: git-who-bus-factor
 ```

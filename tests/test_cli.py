@@ -71,7 +71,7 @@ class TestCLI:
         runner = CliRunner()
         result = runner.invoke(main, ["--version"])
         assert result.exit_code == 0
-        assert "0.5.0" in result.output
+        assert "0.6.0" in result.output
 
     def test_hotspots_command(self, git_repo):
         runner = CliRunner()
@@ -273,3 +273,75 @@ def test_trend_custom_windows(git_repo):
     runner = CliRunner()
     result = runner.invoke(main, ["--path", git_repo, "trend", "-w", "1 month ago"])
     assert result.exit_code == 0
+
+
+
+class TestHtmlReport:
+    """Tests for HTML report generation."""
+
+    def test_html_flag_produces_html(self, git_repo):
+        """--html flag should produce valid HTML output."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["--path", str(git_repo), "--html"])
+        assert result.exit_code == 0
+        assert "<!DOCTYPE html>" in result.output
+        assert "git-who" in result.output
+        assert "</html>" in result.output
+
+    def test_html_contains_grade(self, git_repo):
+        """HTML report should contain health grade."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["--path", str(git_repo), "--html"])
+        assert result.exit_code == 0
+        assert "grade-letter" in result.output
+        assert "grade-score" in result.output
+
+    def test_html_contains_tables(self, git_repo):
+        """HTML report should contain data tables."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["--path", str(git_repo), "--html"])
+        assert result.exit_code == 0
+        assert "<table>" in result.output
+        assert "Top Contributors" in result.output
+
+    def test_html_contains_chart_js(self, git_repo):
+        """HTML report should include Chart.js for visualizations."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["--path", str(git_repo), "--html"])
+        assert result.exit_code == 0
+        assert "chart.js" in result.output
+        assert "bfChart" in result.output
+
+    def test_report_command_creates_file(self, git_repo, tmp_path):
+        """report command should create an HTML file."""
+        runner = CliRunner()
+        output_file = tmp_path / "test-report.html"
+        result = runner.invoke(main, [
+            "--path", str(git_repo), "report",
+            "-o", str(output_file),
+        ])
+        assert result.exit_code == 0
+        assert output_file.exists()
+        content = output_file.read_text()
+        assert "<!DOCTYPE html>" in content
+
+    def test_report_command_default_filename(self, git_repo, tmp_path):
+        """report command should use default filename."""
+        runner = CliRunner()
+        out_path = tmp_path / "report.html"
+        result = runner.invoke(main, [
+            "--path", str(git_repo), "report",
+            "-o", str(out_path),
+        ])
+        assert result.exit_code == 0
+        assert "Report saved to" in result.output
+        assert out_path.exists()
+
+    def test_html_escapes_special_chars(self, git_repo):
+        """HTML report should properly escape content."""
+        from git_who.html_report import generate_html_report
+        from git_who.analyzer import analyze_repo
+        analysis = analyze_repo(str(git_repo))
+        html_output = generate_html_report(analysis)
+        assert "<!DOCTYPE html>" in html_output
+        assert "</html>" in html_output
