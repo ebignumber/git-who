@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>git-who report: git-who</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  background:#0d1117;color:#c9d1d9;padding:2rem;line-height:1.6}
+.container{max-width:900px;margin:0 auto}
+h1{color:#f0f6fc;margin-bottom:.5rem}
+h2{color:#f0f6fc;margin:2rem 0 1rem;border-bottom:1px solid #21262d;padding-bottom:.5rem}
+.subtitle{color:#8b949e;margin-bottom:2rem}
+.grade-card{display:flex;align-items:center;gap:2rem;background:#161b22;
+  border:1px solid #30363d;border-radius:12px;padding:2rem;margin-bottom:2rem}
+.grade-circle{width:100px;height:100px;border-radius:50%;display:flex;
+  align-items:center;justify-content:center;font-size:2.5rem;font-weight:700;
+  color:#fff;flex-shrink:0}
+.grade-details{flex:1}
+.grade-details p{margin:.25rem 0;color:#8b949e}
+.grade-details .finding{color:#c9d1d9}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1rem;margin-bottom:2rem}
+.stat{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:1rem;text-align:center}
+.stat .value{font-size:1.8rem;font-weight:700;color:#f0f6fc}
+.stat .label{color:#8b949e;font-size:.85rem}
+table{width:100%;border-collapse:collapse;background:#161b22;border:1px solid #30363d;border-radius:8px;overflow:hidden;margin-bottom:1rem}
+th{background:#21262d;color:#f0f6fc;text-align:left;padding:.75rem 1rem;font-weight:600}
+td{padding:.5rem 1rem;border-top:1px solid #21262d}
+tr:hover td{background:#1c2128}
+.bf-row{display:flex;align-items:center;gap:.75rem;margin:.4rem 0}
+.bf-label{width:60px;text-align:right;font-size:.85rem;color:#8b949e}
+.bf-bar{height:22px;border-radius:4px;min-width:4px}
+.bf-count{font-size:.85rem;color:#8b949e}
+.footer{margin-top:3rem;padding-top:1rem;border-top:1px solid #21262d;
+  color:#484f58;font-size:.8rem;text-align:center}
+.footer a{color:#58a6ff;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>git-who report</h1>
+<p class="subtitle">git-who &mdash; 41 files, 4 contributors</p>
+
+<div class="grade-card">
+  <div class="grade-circle" style="background:#e05d44">F</div>
+  <div class="grade-details">
+    <p><strong style="color:#f0f6fc">Knowledge Health: 20.6/100</strong></p>
+    <p class="finding">CRITICAL: Bus factor is 1 — a single departure could cripple the project</p><p class="finding">41 files (100%) have bus factor = 1</p><p class="finding">Knowledge is moderately concentrated (57% held by top contributor)</p>
+  </div>
+</div>
+
+<div class="stats">
+  <div class="stat"><div class="value">1</div><div class="label">Bus Factor</div></div>
+  <div class="stat"><div class="value">41</div><div class="label">Files at Risk</div></div>
+  <div class="stat"><div class="value">10</div><div class="label">Hotspots</div></div>
+  <div class="stat"><div class="value">57%</div><div class="label">Top Contributor Share</div></div>
+</div>
+
+<h2>Bus Factor Distribution</h2>
+<div class="bf-row"><span class="bf-label">BF=0</span><div class="bf-bar" style="width:2.5%;background:#e05d44"></div><span class="bf-count">1 files</span></div>
+<div class="bf-row"><span class="bf-label">BF=1</span><div class="bf-bar" style="width:100.0%;background:#e05d44"></div><span class="bf-count">40 files</span></div>
+
+
+<h2>Top Contributors</h2>
+<table>
+<tr><th>#</th><th>Author</th><th>Files Owned</th><th>Commits</th><th>Lines</th><th>Avg Score</th></tr>
+<tr><td>1</td><td>git-who</td><td>24</td><td>83</td><td>11491</td><td>5.3</td></tr>
+<tr><td>2</td><td>Meta-project</td><td>17</td><td>34</td><td>6711</td><td>3.5</td></tr>
+<tr><td>3</td><td>git-who contributors</td><td>0</td><td>8</td><td>783</td><td>2.7</td></tr>
+<tr><td>4</td><td>trinarymage</td><td>0</td><td>2</td><td>12</td><td>1.3</td></tr>
+
+</table>
+
+<h2>Hotspots</h2>
+<p style="color:#8b949e;margin-bottom:1rem">Files changed frequently but known by only one person &mdash; your riskiest code.</p>
+<table>
+<tr><th>File</th><th>Commits</th><th>Sole Expert</th><th>Score</th></tr>
+<tr><td>README.md</td><td>13</td><td>git-who</td><td>16.3</td></tr>
+<tr><td>tests/test_cli.py</td><td>10</td><td>git-who</td><td>13.9</td></tr>
+<tr><td>git_who/__init__.py</td><td>10</td><td>git-who</td><td>6.3</td></tr>
+<tr><td>pyproject.toml</td><td>10</td><td>git-who</td><td>9.0</td></tr>
+<tr><td>git_who/cli.py</td><td>10</td><td>git-who</td><td>16.3</td></tr>
+<tr><td>git_who/analyzer.py</td><td>8</td><td>git-who</td><td>13.7</td></tr>
+<tr><td>CHANGELOG.md</td><td>7</td><td>git-who</td><td>9.4</td></tr>
+<tr><td>git_who/display.py</td><td>7</td><td>git-who</td><td>12.4</td></tr>
+<tr><td>tests/test_analyzer.py</td><td>7</td><td>git-who</td><td>13.2</td></tr>
+<tr><td>docs/index.html</td><td>3</td><td>Meta-project</td><td>6.7</td></tr>
+
+</table>
+
+<div class="footer">
+  Generated by <a href="https://github.com/trinarymage/git-who">git-who</a>
+</div>
+</div>
+</body>
+</html>

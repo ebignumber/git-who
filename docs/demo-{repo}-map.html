@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>git-who treemap: git-who</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  background:#0d1117;color:#c9d1d9;overflow:hidden}
+#header{background:#161b22;border-bottom:1px solid #30363d;padding:12px 20px;
+  display:flex;align-items:center;gap:16px;height:52px}
+#header h1{font-size:16px;color:#f0f6fc;white-space:nowrap}
+#breadcrumbs{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.crumb{color:#58a6ff;cursor:pointer;font-size:14px}
+.crumb:hover{text-decoration:underline}
+.crumb-sep{color:#484f58;font-size:14px}
+#legend{margin-left:auto;display:flex;gap:12px;align-items:center;font-size:12px;color:#8b949e}
+.legend-item{display:flex;align-items:center;gap:4px}
+.legend-dot{width:12px;height:12px;border-radius:2px}
+#treemap{position:absolute;top:52px;left:0;right:0;bottom:0}
+.cell{position:absolute;overflow:hidden;border:1px solid #0d1117;
+  transition:opacity 0.15s}
+.cell:hover{opacity:0.85;z-index:1}
+.cell-label{position:absolute;left:4px;top:3px;font-size:11px;color:#fff;
+  text-shadow:0 1px 2px rgba(0,0,0,0.8);pointer-events:none;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  max-width:calc(100% - 8px)}
+.cell-dir{cursor:pointer}
+.tooltip{position:fixed;background:#1c2128;border:1px solid #30363d;
+  border-radius:8px;padding:12px;font-size:13px;pointer-events:none;
+  z-index:100;max-width:320px;box-shadow:0 4px 12px rgba(0,0,0,0.4)}
+.tooltip .tt-path{color:#58a6ff;font-weight:600;margin-bottom:6px;word-break:break-all}
+.tooltip .tt-row{display:flex;justify-content:space-between;gap:16px;margin:2px 0}
+.tooltip .tt-label{color:#8b949e}
+.tooltip .tt-value{color:#f0f6fc;font-weight:500}
+</style>
+</head>
+<body>
+<div id="header">
+  <h1>git-who treemap</h1>
+  <div id="breadcrumbs"></div>
+  <div id="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#e05d44"></div>BF=1</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#dfb317"></div>BF=2</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#3fb950"></div>BF=3+</div>
+  </div>
+</div>
+<div id="treemap"></div>
+<div class="tooltip" id="tooltip" style="display:none"></div>
+
+<script>
+const DATA = {"name": "git-who", "children": [{"name": "README.md", "value": 1439, "bus_factor": 1, "expert": "git-who", "score": 16.3, "path": "README.md", "num_experts": 3}, {"name": "CHANGELOG.md", "value": 209, "bus_factor": 1, "expert": "git-who", "score": 9.4, "path": "CHANGELOG.md", "num_experts": 2}, {"name": "action.yml", "value": 166, "bus_factor": 1, "expert": "git-who", "score": 3.5, "path": "action.yml", "num_experts": 1}, {"name": "pyproject.toml", "value": 74, "bus_factor": 1, "expert": "git-who", "score": 9.0, "path": "pyproject.toml", "num_experts": 3}, {"name": "CONTRIBUTING.md", "value": 56, "bus_factor": 1, "expert": "git-who", "score": 2.8, "path": "CONTRIBUTING.md", "num_experts": 1}, {"name": "LICENSE", "value": 21, "bus_factor": 1, "expert": "git-who", "score": 2.1, "path": "LICENSE", "num_experts": 1}, {"name": ".gitignore", "value": 11, "bus_factor": 1, "expert": "git-who", "score": 1.7, "path": ".gitignore", "num_experts": 1}, {"name": ".pre-commit-hooks.yaml", "value": 10, "bus_factor": 1, "expert": "git-who", "score": 1.7, "path": ".pre-commit-hooks.yaml", "num_experts": 1}, {"name": ".github", "children": [{"name": "FUNDING.yml", "value": 1, "bus_factor": 1, "expert": "Meta-project", "score": 0.5, "path": ".github/FUNDING.yml", "num_experts": 1}, {"name": "workflows", "children": [{"name": "self-report.yml", "value": 34, "bus_factor": 1, "expert": "Meta-project", "score": 2.5, "path": ".github/workflows/self-report.yml", "num_experts": 1}, {"name": "publish.yml", "value": 31, "bus_factor": 1, "expert": "git-who", "score": 2.3, "path": ".github/workflows/publish.yml", "num_experts": 2}, {"name": "pages.yml", "value": 30, "bus_factor": 1, "expert": "Meta-project", "score": 2.4, "path": ".github/workflows/pages.yml", "num_experts": 1}, {"name": "ci.yml", "value": 30, "bus_factor": 1, "expert": "git-who", "score": 2.4, "path": ".github/workflows/ci.yml", "num_experts": 1}]}, {"name": "ISSUE_TEMPLATE", "children": [{"name": "bug_report.yml", "value": 70, "bus_factor": 1, "expert": "git-who", "score": 2.6, "path": ".github/ISSUE_TEMPLATE/bug_report.yml", "num_experts": 2}, {"name": "feature_request.yml", "value": 39, "bus_factor": 1, "expert": "git-who", "score": 2.2, "path": ".github/ISSUE_TEMPLATE/feature_request.yml", "num_experts": 2}, {"name": "config.yml", "value": 5, "bus_factor": 1, "expert": "Meta-project", "score": 1.2, "path": ".github/ISSUE_TEMPLATE/config.yml", "num_experts": 1}]}]}, {"name": "docs", "children": [{"name": "demo-flask-report.html", "value": 1409, "bus_factor": 1, "expert": "Meta-project", "score": 8.0, "path": "docs/demo-flask-report.html", "num_experts": 1}, {"name": "demo-flask-map.html", "value": 1024, "bus_factor": 1, "expert": "Meta-project", "score": 7.6, "path": "docs/demo-flask-map.html", "num_experts": 1}, {"name": "flask-report.html", "value": 670, "bus_factor": 1, "expert": "Meta-project", "score": 4.5, "path": "docs/flask-report.html", "num_experts": 2}, {"name": "flask-map.html", "value": 461, "bus_factor": 1, "expert": "Meta-project", "score": 4.3, "path": "docs/flask-map.html", "num_experts": 2}, {"name": "index.html", "value": 439, "bus_factor": 1, "expert": "Meta-project", "score": 6.7, "path": "docs/index.html", "num_experts": 2}, {"name": "blog-post.md", "value": 186, "bus_factor": 1, "expert": "Meta-project", "score": 3.6, "path": "docs/blog-post.md", "num_experts": 1}, {"name": "screenshot-overview.svg", "value": 163, "bus_factor": 1, "expert": "Meta-project", "score": 3.5, "path": "docs/screenshot-overview.svg", "num_experts": 1}, {"name": "screenshot-me.svg", "value": 161, "bus_factor": 1, "expert": "Meta-project", "score": 3.5, "path": "docs/screenshot-me.svg", "num_experts": 1}, {"name": "screenshot-health.svg", "value": 120, "bus_factor": 1, "expert": "Meta-project", "score": 3.3, "path": "docs/screenshot-health.svg", "num_experts": 1}]}, {"name": "git_who", "children": [{"name": "analyzer.py", "value": 2485, "bus_factor": 1, "expert": "git-who", "score": 13.7, "path": "git_who/analyzer.py", "num_experts": 4}, {"name": "cli.py", "value": 1870, "bus_factor": 1, "expert": "git-who", "score": 16.3, "path": "git_who/cli.py", "num_experts": 3}, {"name": "display.py", "value": 1299, "bus_factor": 1, "expert": "git-who", "score": 12.4, "path": "git_who/display.py", "num_experts": 3}, {"name": "treemap.py", "value": 1066, "bus_factor": 1, "expert": "Meta-project", "score": 4.4, "path": "git_who/treemap.py", "num_experts": 2}, {"name": "html_report.py", "value": 770, "bus_factor": 1, "expert": "Meta-project", "score": 4.1, "path": "git_who/html_report.py", "num_experts": 2}, {"name": "badge.py", "value": 198, "bus_factor": 1, "expert": "Meta-project", "score": 3.2, "path": "git_who/badge.py", "num_experts": 2}, {"name": "config.py", "value": 173, "bus_factor": 1, "expert": "git-who", "score": 3.6, "path": "git_who/config.py", "num_experts": 1}, {"name": "__init__.py", "value": 21, "bus_factor": 1, "expert": "git-who", "score": 6.3, "path": "git_who/__init__.py", "num_experts": 3}]}, {"name": "tests", "children": [{"name": "test_analyzer.py", "value": 1996, "bus_factor": 1, "expert": "git-who", "score": 13.2, "path": "tests/test_analyzer.py", "num_experts": 3}, {"name": "test_cli.py", "value": 620, "bus_factor": 1, "expert": "git-who", "score": 13.9, "path": "tests/test_cli.py", "num_experts": 3}, {"name": "test_treemap.py", "value": 330, "bus_factor": 1, "expert": "Meta-project", "score": 3.5, "path": "tests/test_treemap.py", "num_experts": 2}, {"name": "test_config.py", "value": 127, "bus_factor": 1, "expert": "git-who", "score": 3.4, "path": "tests/test_config.py", "num_experts": 1}, {"name": "__init__.py", "value": 1, "bus_factor": 0, "expert": "git-who", "score": 0.0, "path": "tests/__init__.py", "num_experts": 1}]}, {"name": "demo", "children": [{"name": "flask-report.html", "value": 670, "bus_factor": 1, "expert": "git-who", "score": 4.5, "path": "demo/flask-report.html", "num_experts": 1}, {"name": "flask-map.html", "value": 461, "bus_factor": 1, "expert": "git-who", "score": 4.3, "path": "demo/flask-map.html", "num_experts": 1}, {"name": "index.html", "value": 52, "bus_factor": 1, "expert": "git-who", "score": 2.8, "path": "demo/index.html", "num_experts": 1}]}]};
+
+function bfColor(bf) {
+  if (bf <= 1) return '#e05d44';
+  if (bf === 2) return '#dfb317';
+  return '#3fb950';
+}
+
+function bfColorDir(children) {
+  let minBf = Infinity;
+  function walk(n) {
+    if (n.value !== undefined) { minBf = Math.min(minBf, n.bus_factor || 0); return; }
+    (n.children || []).forEach(walk);
+  }
+  walk({children});
+  if (minBf === Infinity) return '#21262d';
+  const r = bfColor(minBf);
+  // Lighten for directories
+  return minBf <= 1 ? '#5a2020' : minBf === 2 ? '#4a3a10' : '#1a3a20';
+}
+
+function sumValues(node) {
+  if (node.value !== undefined) return node.value;
+  return (node.children || []).reduce((s, c) => s + sumValues(c), 0);
+}
+
+function squarify(children, x, y, w, h) {
+  if (!children.length || w <= 0 || h <= 0) return [];
+  const total = children.reduce((s, c) => s + c._size, 0);
+  if (total === 0) return [];
+  const rects = [];
+  let remaining = [...children];
+  let cx = x, cy = y, cw = w, ch = h;
+
+  while (remaining.length > 0) {
+    const isWide = cw >= ch;
+    const side = isWide ? ch : cw;
+    let row = [remaining[0]];
+    let rowSum = remaining[0]._size;
+
+    function worst(r, s, side) {
+      const area = (s / total) * cw * ch;
+      if (area <= 0 || side <= 0) return Infinity;
+      let mx = 0;
+      for (const c of r) {
+        const a = (c._size / s) * area;
+        const w2 = a / side;
+        const h2 = side;
+        const ratio = Math.max(w2/h2, h2/w2);
+        mx = Math.max(mx, ratio);
+      }
+      return mx;
+    }
+
+    let i = 1;
+    while (i < remaining.length) {
+      const cur = worst(row, rowSum, side);
+      const next = worst([...row, remaining[i]], rowSum + remaining[i]._size, side);
+      if (next <= cur) {
+        row.push(remaining[i]);
+        rowSum += remaining[i]._size;
+        i++;
+      } else break;
+    }
+
+    remaining = remaining.slice(row.length);
+    const rowFrac = rowSum / total;
+
+    let rx = cx, ry = cy;
+    for (const c of row) {
+      const frac = c._size / rowSum;
+      if (isWide) {
+        const rw = cw * rowFrac;
+        const rh = ch * frac;
+        rects.push({node: c, x: rx, y: ry, w: rw, h: rh});
+        ry += rh;
+      } else {
+        const rw = cw * frac;
+        const rh = ch * rowFrac;
+        rects.push({node: c, x: rx, y: ry, w: rw, h: rh});
+        rx += rw;
+      }
+    }
+
+    if (isWide) { cx += cw * rowFrac; cw -= cw * rowFrac; }
+    else { cy += ch * rowFrac; ch -= ch * rowFrac; }
+  }
+  return rects;
+}
+
+let currentNode = DATA;
+let breadcrumbPath = [DATA];
+
+function render(node) {
+  const container = document.getElementById('treemap');
+  const W = container.clientWidth;
+  const H = container.clientHeight;
+  container.innerHTML = '';
+
+  const children = (node.children || []).map(c => ({...c, _size: sumValues(c)}));
+  children.sort((a, b) => b._size - a._size);
+
+  const rects = squarify(children, 0, 0, W, H);
+
+  for (const r of rects) {
+    const div = document.createElement('div');
+    div.className = 'cell';
+    div.style.left = r.x + 'px';
+    div.style.top = r.y + 'px';
+    div.style.width = Math.max(0, r.w - 1) + 'px';
+    div.style.height = Math.max(0, r.h - 1) + 'px';
+
+    const isLeaf = r.node.value !== undefined;
+    if (isLeaf) {
+      div.style.background = bfColor(r.node.bus_factor || 0);
+    } else {
+      div.style.background = bfColorDir(r.node.children || []);
+      div.className += ' cell-dir';
+      div.addEventListener('click', () => zoomIn(r.node));
+    }
+
+    if (r.w > 30 && r.h > 16) {
+      const label = document.createElement('div');
+      label.className = 'cell-label';
+      label.textContent = r.node.name;
+      if (!isLeaf) label.style.fontWeight = '600';
+      div.appendChild(label);
+    }
+
+    div.addEventListener('mouseenter', e => showTooltip(e, r.node, isLeaf));
+    div.addEventListener('mousemove', e => moveTooltip(e));
+    div.addEventListener('mouseleave', hideTooltip);
+
+    container.appendChild(div);
+  }
+
+  renderBreadcrumbs();
+}
+
+function zoomIn(node) {
+  if (!node.children || !node.children.length) return;
+  breadcrumbPath.push(node);
+  currentNode = node;
+  render(node);
+}
+
+function zoomTo(index) {
+  breadcrumbPath = breadcrumbPath.slice(0, index + 1);
+  currentNode = breadcrumbPath[breadcrumbPath.length - 1];
+  render(currentNode);
+}
+
+function renderBreadcrumbs() {
+  const bc = document.getElementById('breadcrumbs');
+  bc.innerHTML = '';
+  breadcrumbPath.forEach((n, i) => {
+    if (i > 0) {
+      const sep = document.createElement('span');
+      sep.className = 'crumb-sep';
+      sep.textContent = '/';
+      bc.appendChild(sep);
+    }
+    const crumb = document.createElement('span');
+    crumb.className = 'crumb';
+    crumb.textContent = n.name;
+    if (i < breadcrumbPath.length - 1) {
+      crumb.addEventListener('click', () => zoomTo(i));
+    } else {
+      crumb.style.color = '#f0f6fc';
+      crumb.style.cursor = 'default';
+    }
+    bc.appendChild(crumb);
+  });
+}
+
+const tooltip = document.getElementById('tooltip');
+function showTooltip(e, node, isLeaf) {
+  let html = '<div class="tt-path">' + (node.path || node.name) + '</div>';
+  if (isLeaf) {
+    html += '<div class="tt-row"><span class="tt-label">Expert</span><span class="tt-value">' + (node.expert||'—') + '</span></div>';
+    html += '<div class="tt-row"><span class="tt-label">Score</span><span class="tt-value">' + (node.score||0) + '</span></div>';
+    html += '<div class="tt-row"><span class="tt-label">Bus Factor</span><span class="tt-value">' + (node.bus_factor||0) + '</span></div>';
+    html += '<div class="tt-row"><span class="tt-label">Experts</span><span class="tt-value">' + (node.num_experts||0) + '</span></div>';
+    html += '<div class="tt-row"><span class="tt-label">Lines</span><span class="tt-value">' + (node.value||0).toLocaleString() + '</span></div>';
+  } else {
+    const total = sumValues(node);
+    const count = (node.children||[]).length;
+    html += '<div class="tt-row"><span class="tt-label">Items</span><span class="tt-value">' + count + '</span></div>';
+    html += '<div class="tt-row"><span class="tt-label">Total Lines</span><span class="tt-value">' + total.toLocaleString() + '</span></div>';
+    html += '<div style="margin-top:6px;color:#8b949e;font-size:11px">Click to zoom in</div>';
+  }
+  tooltip.innerHTML = html;
+  tooltip.style.display = 'block';
+  moveTooltip(e);
+}
+
+function moveTooltip(e) {
+  let x = e.clientX + 16, y = e.clientY + 16;
+  const tw = tooltip.offsetWidth, th = tooltip.offsetHeight;
+  if (x + tw > window.innerWidth - 8) x = e.clientX - tw - 8;
+  if (y + th > window.innerHeight - 8) y = e.clientY - th - 8;
+  tooltip.style.left = x + 'px';
+  tooltip.style.top = y + 'px';
+}
+
+function hideTooltip() { tooltip.style.display = 'none'; }
+
+window.addEventListener('resize', () => render(currentNode));
+render(DATA);
+</script>
+</body>
+</html>
