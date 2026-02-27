@@ -1,109 +1,27 @@
-# git-who
+<p align="center">
+  <h1 align="center">git-who</h1>
+  <p align="center">
+    <strong>Find out who really knows your code.</strong>
+  </p>
+  <p align="center">
+    <a href="https://pypi.org/project/git-who/"><img alt="PyPI" src="https://img.shields.io/pypi/v/git-who"></a>
+    <a href="https://github.com/trinarymage/git-who/actions"><img alt="CI" src="https://github.com/trinarymage/git-who/actions/workflows/ci.yml/badge.svg"></a>
+    <a href="https://github.com/trinarymage/git-who/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg"></a>
+    <img alt="Python 3.9+" src="https://img.shields.io/badge/python-3.9+-blue.svg">
+  </p>
+</p>
 
-> Find out who really knows your code.
+---
 
-**git-who** analyzes git history to compute expertise scores, bus factor, and code ownership. Unlike simple line-counting tools, git-who weights contributions by recency, frequency, and volume to show who *actually* knows each part of your codebase.
-
-## Why git-who?
-
-Every codebase has hidden risks:
-- **Which files will break if someone leaves?** (hotspot detection)
-- **Who should review this PR?** (expertise-based reviewer suggestions)
-- **Which team owns which part of the code?** (directory-level expertise)
-
-git-who answers these questions in seconds, directly from your git history.
-
-## Features
-
-- **Expertise scoring** — Weighted analysis considering recency, frequency, and volume of changes
-- **Bus factor analysis** — Identify single points of failure in code knowledge
-- **Hotspot detection** — Find files that are both frequently changed AND known by few people
-- **Directory aggregation** — See expertise at the module/directory level
-- **Reviewer suggestions** — Get data-driven PR reviewer recommendations
-- **Markdown output** — Share results in PRs, Slack, or docs with `--markdown`
-- **Rich terminal output** — Beautiful tables and visual bars
-- **JSON output** — Machine-readable output for CI/CD integration
-- **Zero config** — Works on any git repository, no setup needed
-
-## Installation
-
-```bash
-pip install git-who
-```
-
-Or run directly from the repo:
-
-```bash
-git clone https://github.com/trinarymage/git-who.git
-cd git-who
-pip install -e .
-```
-
-## Quick Start
-
-```bash
-# Full repository overview
-git-who
-
-# Who are the hotspots? (high churn + low bus factor = risk)
-git-who hotspots
-
-# Bus factor analysis
-git-who bus-factor
-
-# Expertise by directory
-git-who dirs
-
-# Expertise for specific files
-git-who file src/main.py
-
-# Suggest reviewers for your current changes
-git-who review --base main
-
-# Markdown output (great for PRs)
-git-who --markdown
-
-# JSON output for scripting
-git-who --json
-```
-
-## How It Works
-
-git-who computes an **expertise score** for each author on each file using three signals from git history:
-
-| Signal | What it measures | Why it matters |
-|--------|-----------------|----------------|
-| **Volume** | Lines added + deleted (log scale) | Raw contribution size, with diminishing returns |
-| **Frequency** | Number of commits (log scale) | Many touches indicate deep familiarity |
-| **Recency** | Time since last commit (180-day half-life) | Recent work = current knowledge |
-
-The combined score is: `volume × frequency × recency`
-
-This means someone who wrote 10,000 lines two years ago scores *lower* than someone who made 50 focused commits last month. Knowledge is about *current* familiarity, not historical contribution.
-
-### Bus Factor
-
-The **bus factor** is the minimum number of people who would need to leave before a file (or the entire repo) loses more than 50% of its expertise. A bus factor of 1 means a single person holds most of the knowledge — a risk.
-
-### Hotspot Detection
-
-A **hotspot** is a file that is both frequently changed AND has a low bus factor. These are your biggest risks: code that changes often but is understood by only one person. If that person leaves, you have frequently-changing code that nobody else understands.
-
-### Reviewer Suggestions
-
-`git-who review` analyzes which files changed relative to a base branch and suggests reviewers who have the highest expertise scores on those specific files.
-
-## Examples
-
-### Repository Overview
+**git-who** analyzes git history to compute expertise scores, bus factor, and code ownership. Unlike simple line-counting tools, git-who weights contributions by **recency**, **frequency**, and **volume** — showing who *actually* knows each part of your codebase right now.
 
 ```
 $ git-who
 
-┌──────────────────────────────────────────────┐
-│ Repository: /home/user/myproject             │
-│                          Bus Factor: 3       │
-└──────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│ Repository: /home/user/myproject                 │
+│                             Bus Factor: 3        │
+└──────────────────────────────────────────────────┘
   Files analyzed: 142  |  Authors: 8  |  Bus Factor: 3
 
        Top Contributors by Expertise
@@ -114,9 +32,105 @@ $ git-who
 │ 2 │ Bob          │          38 │     210 │  8200 │      14.7 │
 │ 3 │ Charlie      │          31 │     180 │  6100 │      11.2 │
 └───┴──────────────┴─────────────┴─────────┴───────┴───────────┘
+
+       Files at Risk (bus factor = 1)
+┌──────────────────────────┬──────────────┬───────┐
+│ File                     │ Sole Expert  │ Score │
+├──────────────────────────┼──────────────┼───────┤
+│ src/payment/billing.py   │ Alice        │  28.3 │
+│ src/auth/oauth.py        │ Bob          │  19.1 │
+└──────────────────────────┴──────────────┴───────┘
+```
+
+## Why git-who?
+
+Every codebase has hidden risks:
+
+- **Who should review this PR?** — expertise-based reviewer suggestions, not random assignment
+- **Which files will break if someone leaves?** — bus factor analysis per file, directory, and repo
+- **Where are the risky hotspots?** — files changed often but known by only one person
+- **Which team owns what?** — expertise grouped by email domain for org-level visibility
+- **Who should own what?** — auto-generate CODEOWNERS from actual git expertise
+
+git-who answers these in seconds. Zero config. Works on any git repository.
+
+## Installation
+
+```bash
+pip install git-who
+```
+
+Or install from source:
+
+```bash
+git clone https://github.com/trinarymage/git-who.git
+cd git-who && pip install -e .
+```
+
+## Quick Start
+
+```bash
+git-who                        # Full repository overview
+git-who hotspots               # High churn + low bus factor = risk
+git-who bus-factor             # Detailed bus factor analysis
+git-who codeowners             # Generate CODEOWNERS from expertise
+git-who teams                  # Expertise by team (email domain)
+git-who dirs                   # Expertise by directory
+git-who file src/main.py       # Expertise for specific files
+git-who review --base main     # Suggest reviewers for current changes
+git-who --markdown             # Markdown report for PRs/docs
+git-who --json                 # Machine-readable JSON output
+```
+
+### Filtering
+
+```bash
+git-who --since "6 months ago"          # Only recent history
+git-who --since "2024-01-01"            # Since a specific date
+git-who --ignore "vendor/*" --ignore "*.min.js"  # Exclude patterns
+git-who --since "3 months ago" hotspots # Combine with any command
+```
+
+## Features
+
+### Expertise Scoring
+
+git-who computes a weighted score for each author on each file:
+
+| Signal | What it measures | Why it matters |
+|--------|-----------------|----------------|
+| **Volume** | Lines added + deleted (log scale) | Raw contribution size, with diminishing returns |
+| **Frequency** | Number of commits (log scale) | Many touches indicate deep familiarity |
+| **Recency** | Time since last commit (180-day half-life) | Recent work = current knowledge |
+
+**Score = volume x frequency x recency**
+
+Someone who wrote 10,000 lines two years ago scores *lower* than someone who made 50 focused commits last month. Knowledge is about *current* familiarity, not historical credit.
+
+### Bus Factor Analysis
+
+The **bus factor** is the minimum number of people who would need to leave before a file (or the entire repo) loses more than 50% of its expertise.
+
+```
+$ git-who bus-factor
+
+┌─────────────────────────────────────────────┐
+│ Repository Bus Factor: 2                    │
+└─────────────────────────────────────────────┘
+
+       Files by Bus Factor
+┌────────────┬───────┬──────────┬───────────┐
+│ Bus Factor │ Files │ % of Repo│ Risk      │
+├────────────┼───────┼──────────┼───────────┤
+│     1      │    23 │      16% │ CRITICAL  │
+│     2      │    54 │      38% │ WARNING   │
+│     3+     │    65 │      46% │ OK        │
+└────────────┴───────┴──────────┴───────────┘
 ```
 
 ### Hotspot Detection
+
+A **hotspot** = frequently changed + low bus factor. Your riskiest code.
 
 ```
 $ git-who hotspots
@@ -134,28 +148,21 @@ $ git-who hotspots
 └──────────────────────────┴─────────┴──────────────┴───────┴───────────────┘
 ```
 
-### Directory Expertise
+### Team Analysis
+
+Group expertise by email domain for org-level visibility:
 
 ```
-$ git-who dirs
+$ git-who teams
 
-                Directory Expertise
-┌──────────────┬───────┬────────────┬──────────────┬──────────┐
-│ Directory    │ Files │ Bus Factor │ Top Expert   │ Hotspots │
-├──────────────┼───────┼────────────┼──────────────┼──────────┤
-│ src          │    89 │     3      │ Alice        │    2     │
-│ tests        │    42 │     2      │ Bob          │    0     │
-│ docs         │    11 │     1      │ Charlie      │    1     │
-└──────────────┴───────┴────────────┴──────────────┴──────────┘
+┌───┬──────────────────────┬─────────┬───────┬─────────────┐
+│ # │ Team (domain)        │ Members │ Files │ Total Score │
+├───┼──────────────────────┼─────────┼───────┼─────────────┤
+│ 1 │ company.com          │       5 │   120 │      482.3  │
+│ 2 │ contractor.io        │       2 │    34 │       87.1  │
+│ 3 │ gmail.com            │       1 │    12 │       23.4  │
+└───┴──────────────────────┴─────────┴───────┴─────────────┘
 ```
-
-### Markdown Output
-
-```bash
-$ git-who --markdown > report.md
-```
-
-Produces a clean Markdown report you can paste into PRs, Slack, or docs.
 
 ### Reviewer Suggestions
 
@@ -175,20 +182,177 @@ $ git-who review --base main --exclude "Alice"
 └───┴──────────────┴───────────┴──────────────────────┘
 ```
 
-## JSON Output
+### Directory Expertise
 
-All commands support `--json` for machine-readable output:
+```
+$ git-who dirs --depth 2
 
-```bash
-git-who --json | jq '.bus_factor'
-git-who hotspots --json | jq '.hotspots[] | .file'
-git-who review --json | jq '.reviewers[0].author'
-git-who dirs --json | jq '.directories[] | select(.bus_factor <= 1)'
+                Directory Expertise
+┌──────────────┬───────┬────────────┬──────────────┬──────────┐
+│ Directory    │ Files │ Bus Factor │ Top Expert   │ Hotspots │
+├──────────────┼───────┼────────────┼──────────────┼──────────┤
+│ src/api      │    32 │     3      │ Alice        │    1     │
+│ src/auth     │    18 │     1      │ Bob          │    1     │
+│ src/payment  │    15 │     2      │ Alice        │    1     │
+│ tests        │    42 │     2      │ Bob          │    0     │
+└──────────────┴───────┴────────────┴──────────────┴──────────┘
 ```
 
-## CI Integration
+### CODEOWNERS Generation
 
-### GitHub Actions — Bus Factor Check
+Automatically generate a GitHub CODEOWNERS file based on actual expertise — no more guesswork:
+
+```
+$ git-who codeowners
+
+# This file was auto-generated by git-who
+# https://github.com/trinarymage/git-who
+#
+# To regenerate: git-who codeowners > .github/CODEOWNERS
+
+*           Alice Bob Charlie
+/src/api/   Alice Bob
+/src/auth/  Bob
+/src/core/  Charlie Alice
+/tests/     Bob Alice
+```
+
+Write it directly to your repo:
+
+```bash
+git-who codeowners > .github/CODEOWNERS
+```
+
+Fine-tune the output:
+
+```bash
+# Per-file rules instead of per-directory
+git-who codeowners --granularity file
+
+# Deeper directory grouping
+git-who codeowners --depth 2
+
+# Use email addresses
+git-who codeowners --emails
+
+# Limit owners per entry
+git-who codeowners --max-owners 2
+
+# Only include authors above a score threshold
+git-who codeowners --min-score 5.0
+
+# No header comment
+git-who codeowners --no-header
+
+# JSON output for scripting
+git-who --json codeowners | jq '.entries[] | select(.owners | length == 1)'
+```
+
+Keep CODEOWNERS in sync by running it in CI:
+
+```yaml
+- name: Update CODEOWNERS
+  run: |
+    pip install git-who
+    git-who codeowners > .github/CODEOWNERS
+    git diff --exit-code .github/CODEOWNERS || echo "::warning::CODEOWNERS is out of date"
+```
+
+### Output Formats
+
+```bash
+# JSON for scripting
+git-who --json | jq '.bus_factor'
+git-who hotspots --json | jq '.hotspots[] | .file'
+git-who teams --json | jq '.teams[] | select(.member_count == 1)'
+
+# Markdown for sharing
+git-who --markdown > report.md
+```
+
+## GitHub Action
+
+Use git-who in your CI/CD pipeline with the official GitHub Action:
+
+```yaml
+# .github/workflows/expertise.yml
+name: Code Expertise Report
+on: [pull_request]
+
+jobs:
+  expertise:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history needed for analysis
+
+      - uses: trinarymage/git-who@main
+        with:
+          command: overview
+          format: markdown
+          post-comment: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+```
+
+### Action Inputs
+
+| Input | Description | Default |
+|-------|-------------|---------|
+| `command` | `overview`, `bus-factor`, `hotspots`, `dirs`, `review` | `overview` |
+| `format` | `terminal`, `json`, `markdown` | `markdown` |
+| `since` | Date filter (e.g., `"6 months ago"`) | |
+| `ignore` | Comma-separated glob patterns | |
+| `post-comment` | Post results as PR comment | `false` |
+| `github-token` | Token for PR comments | |
+| `fail-on-bus-factor` | Fail if bus factor below threshold | `0` |
+| `min-commits` | Min commits for hotspot detection | `3` |
+| `base` | Base branch for reviewer suggestions | `main` |
+
+### Action Outputs
+
+| Output | Description |
+|--------|-------------|
+| `bus-factor` | Repository-wide bus factor |
+| `hotspot-count` | Number of hotspots detected |
+| `report` | Full report text |
+
+### Action Examples
+
+**Bus factor gate** — fail the PR if bus factor drops:
+
+```yaml
+- uses: trinarymage/git-who@main
+  with:
+    fail-on-bus-factor: 2
+```
+
+**Auto-suggest reviewers:**
+
+```yaml
+- uses: trinarymage/git-who@main
+  id: gitwho
+  with:
+    command: review
+    format: json
+    base: ${{ github.event.pull_request.base.ref }}
+```
+
+**Hotspot warnings:**
+
+```yaml
+- uses: trinarymage/git-who@main
+  id: gitwho
+  with:
+    command: hotspots
+    format: markdown
+    post-comment: true
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+```
+
+## CI Integration (without the Action)
+
+If you prefer scripting directly:
 
 ```yaml
 - name: Check bus factor
@@ -198,34 +362,8 @@ git-who dirs --json | jq '.directories[] | select(.bus_factor <= 1)'
     if [ "$BUS_FACTOR" -lt 2 ]; then
       echo "::warning::Repository bus factor is $BUS_FACTOR"
     fi
-```
 
-### GitHub Actions — Hotspot Report
-
-```yaml
-- name: Hotspot report
-  run: |
-    pip install git-who
-    HOTSPOTS=$(git-who hotspots --json | jq '.hotspots | length')
-    if [ "$HOTSPOTS" -gt 0 ]; then
-      echo "::warning::$HOTSPOTS hotspot(s) detected"
-      git-who hotspots
-    fi
-```
-
-### GitHub Actions — Suggest Reviewers
-
-```yaml
-- name: Suggest reviewers
-  run: |
-    pip install git-who
-    git-who review --base ${{ github.event.pull_request.base.ref }} --json
-```
-
-### Post Markdown Report as PR Comment
-
-```yaml
-- name: Post expertise report
+- name: Post expertise report as PR comment
   run: |
     pip install git-who
     git-who --markdown > /tmp/report.md
@@ -237,13 +375,18 @@ git-who dirs --json | jq '.directories[] | select(.bus_factor <= 1)'
 | Feature | git-who | git-fame | git-extras |
 |---------|---------|----------|------------|
 | Expertise scoring | Weighted (recency + frequency + volume) | Line count only | N/A |
-| Bus factor | Per-file and repo-wide | No | No |
-| Hotspot detection | Yes (churn × bus factor) | No | No |
+| Bus factor | Per-file, per-directory, and repo-wide | No | No |
+| Hotspot detection | Yes (churn x bus factor) | No | No |
+| CODEOWNERS generation | Yes (from expertise data) | No | No |
+| Team analysis | Yes (by email domain) | No | No |
 | Directory aggregation | Yes | No | No |
-| Reviewer suggestions | Yes | No | No |
+| Reviewer suggestions | Yes (expertise-based) | No | No |
 | Recency weighting | Yes (180-day half-life) | No | No |
+| Time filtering | Yes (`--since`) | No | No |
+| File exclusion | Yes (`--ignore`) | No | No |
 | Markdown output | Yes | No | No |
 | JSON output | Yes | Yes | No |
+| GitHub Action | Yes (official) | No | No |
 | Zero config | Yes | Yes | Yes |
 
 ## Development

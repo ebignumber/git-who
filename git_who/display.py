@@ -308,6 +308,45 @@ def display_directories(
     console.print()
 
 
+def display_teams(console: Console, teams_data: list[dict]) -> None:
+    """Display team-level expertise grouped by email domain."""
+    if not teams_data:
+        console.print("[dim]  No team data found.[/]")
+        return
+
+    console.print(Panel(
+        f"[bold]{len(teams_data)} team(s)[/] identified by email domain",
+        title="Team Expertise",
+        border_style="cyan",
+    ))
+
+    table = Table(show_header=True, expand=False)
+    table.add_column("#", justify="right", style="dim", width=3)
+    table.add_column("Team (domain)", style="cyan", min_width=25)
+    table.add_column("Members", justify="right", min_width=8)
+    table.add_column("Files", justify="right", min_width=8)
+    table.add_column("Total Score", justify="right", style="yellow", min_width=12)
+    table.add_column("Top Members", min_width=30)
+
+    max_score = teams_data[0]["total_score"] if teams_data else 1.0
+
+    for i, team in enumerate(teams_data, 1):
+        members_str = ", ".join(team["members"][:3])
+        if len(team["members"]) > 3:
+            members_str += f" +{len(team['members']) - 3}"
+        table.add_row(
+            str(i),
+            team["team"],
+            str(team["member_count"]),
+            str(team["files_touched"]),
+            f"{team['total_score']:.1f}",
+            members_str,
+        )
+
+    console.print(table)
+    console.print()
+
+
 def format_markdown(analysis: RepoAnalysis, hotspots: list[Hotspot] | None = None) -> str:
     """Format analysis results as Markdown for sharing in PRs/docs."""
     lines = []

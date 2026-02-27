@@ -16,6 +16,8 @@ from .analyzer import (
     suggest_reviewers,
     find_hotspots,
     aggregate_directories,
+    generate_codeowners,
+    format_codeowners,
 )
 from .display import (
     display_overview,
@@ -24,6 +26,7 @@ from .display import (
     display_bus_factor,
     display_hotspots,
     display_directories,
+    display_teams,
     display_json,
     format_markdown,
 )
@@ -35,8 +38,10 @@ from .display import (
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON.")
 @click.option("--markdown", "as_md", is_flag=True, help="Output as Markdown (great for PRs and docs).")
 @click.option("--top", "-n", default=10, help="Number of top authors to show.")
+@click.option("--since", default=None, help="Only consider commits after this date (e.g., '6 months ago', '2024-01-01').")
+@click.option("--ignore", multiple=True, help="Glob patterns for files to ignore (e.g., 'vendor/*', '*.min.js').")
 @click.pass_context
-def main(ctx: click.Context, path: str, as_json: bool, as_md: bool, top: int) -> None:
+def main(ctx: click.Context, path: str, as_json: bool, as_md: bool, top: int, since: str | None, ignore: tuple[str, ...]) -> None:
     """Find out who really knows your code.
 
     Analyzes git history to compute expertise scores, bus factor,
@@ -49,6 +54,8 @@ def main(ctx: click.Context, path: str, as_json: bool, as_md: bool, top: int) ->
     ctx.obj["json"] = as_json
     ctx.obj["markdown"] = as_md
     ctx.obj["top"] = top
+    ctx.obj["since"] = since
+    ctx.obj["ignore"] = list(ignore) if ignore else None
 
     if ctx.invoked_subcommand is None:
         _overview(ctx)
@@ -60,10 +67,12 @@ def _overview(ctx: click.Context) -> None:
     as_json = ctx.obj["json"]
     as_md = ctx.obj["markdown"]
     top = ctx.obj["top"]
+    since = ctx.obj["since"]
+    ignore = ctx.obj["ignore"]
     console = Console(stderr=True) if as_json or as_md else Console()
 
     try:
-        analysis = analyze_repo(path)
+        analysis = analyze_repo(path, since=since, ignore=ignore)
     except RuntimeError as e:
         console.print(f"[red]Error:[/] {e}")
         sys.exit(1)
@@ -91,10 +100,12 @@ def file(ctx: click.Context, files: tuple[str, ...]) -> None:
     """
     path = ctx.obj["path"]
     as_json = ctx.obj["json"]
+    since = ctx.obj["since"]
+    ignore = ctx.obj["ignore"]
     console = Console(stderr=True) if as_json else Console()
 
     try:
-        analysis = analyze_repo(path, target_paths=list(files))
+        analysis = analyze_repo(path, target_paths=list(files), since=since, ignore=ignore)
     except RuntimeError as e:
         console.print(f"[red]Error:[/] {e}")
         sys.exit(1)
@@ -121,6 +132,8 @@ def review(ctx: click.Context, base: str, exclude: tuple[str, ...], max_reviewer
     """
     path = ctx.obj["path"]
     as_json = ctx.obj["json"]
+    since = ctx.obj["since"]
+    ignore = ctx.obj["ignore"]
     console = Console(stderr=True) if as_json else Console()
 
     try:
@@ -134,7 +147,7 @@ def review(ctx: click.Context, base: str, exclude: tuple[str, ...], max_reviewer
         sys.exit(0)
 
     try:
-        analysis = analyze_repo(path)
+        analysis = analyze_repo(path, since=since, ignore=ignore)
     except RuntimeError as e:
         console.print(f"[red]Error:[/] {e}")
         sys.exit(1)
@@ -166,10 +179,12 @@ def bus_factor(ctx: click.Context) -> None:
     """
     path = ctx.obj["path"]
     as_json = ctx.obj["json"]
+    since = ctx.obj["since"]
+    ignore = ctx.obj["ignore"]
     console = Console(stderr=True) if as_json else Console()
 
     try:
-        analysis = analyze_repo(path)
+        analysis = analyze_repo(path, since=since, ignore=ignore)
     except RuntimeError as e:
         console.print(f"[red]Error:[/] {e}")
         sys.exit(1)
@@ -211,10 +226,12 @@ def hotspots(ctx: click.Context, min_commits: int) -> None:
     """
     path = ctx.obj["path"]
     as_json = ctx.obj["json"]
+    since = ctx.obj["since"]
+    ignore = ctx.obj["ignore"]
     console = Console(stderr=True) if as_json else Console()
 
     try:
-        analysis = analyze_repo(path)
+        analysis = analyze_repo(path, since=since, ignore=ignore)
     except RuntimeError as e:
         console.print(f"[red]Error:[/] {e}")
         sys.exit(1)
@@ -253,10 +270,12 @@ def dirs(ctx: click.Context, depth: int) -> None:
     """
     path = ctx.obj["path"]
     as_json = ctx.obj["json"]
+    since = ctx.obj["since"]
+    ignore = ctx.obj["ignore"]
     console = Console(stderr=True) if as_json else Console()
 
     try:
-        analysis = analyze_repo(path)
+        analysis = analyze_repo(path, since=since, ignore=ignore)
     except RuntimeError as e:
         console.print(f"[red]Error:[/] {e}")
         sys.exit(1)
@@ -279,3 +298,116 @@ def dirs(ctx: click.Context, depth: int) -> None:
         print(json.dumps(result, indent=2))
     else:
         display_directories(console, directories)
+
+
+@main.command()
+@click.option("--granularity", "-g", type=click.Choice(["directory", "file"]), default="directory",
+              help="Generate rules per directory (default) or per file.")
+@click.option("--depth", "-d", default=1, help="Directory depth for directory-level granularity.")
+@click.option("--max-owners", default=3, help="Maximum owners per entry.")
+@click.option("--min-score", default=0.0, help="Minimum expertise score to qualify as owner.")
+@click.option("--emails", is_flag=True, help="Use email addresses instead of author names.")
+@click.option("--no-header", is_flag=True, help="Omit the generated-by header comment.")
+@click.pass_context
+def codeowners(ctx: click.Context, granularity: str, depth: int, max_owners: int,
+               min_score: float, emails: bool, no_header: bool) -> None:
+    """Generate a CODEOWNERS file from expertise analysis.
+
+    Analyzes git history and outputs a CODEOWNERS file assigning owners
+    to directories or files based on actual expertise scores — not guesswork.
+
+    \\b
+    Examples:
+        git-who codeowners                        # Directory-level CODEOWNERS
+        git-who codeowners --granularity file      # Per-file CODEOWNERS
+        git-who codeowners > .github/CODEOWNERS    # Write directly
+        git-who codeowners --emails                # Use email addresses
+        git-who codeowners --depth 2               # Deeper directory grouping
+    """
+    path = ctx.obj["path"]
+    as_json = ctx.obj["json"]
+    since = ctx.obj["since"]
+    ignore = ctx.obj["ignore"]
+    console = Console(stderr=True) if as_json else Console(stderr=True)
+
+    try:
+        analysis = analyze_repo(path, since=since, ignore=ignore)
+    except RuntimeError as e:
+        console.print(f"[red]Error:[/] {e}")
+        sys.exit(1)
+
+    entries = generate_codeowners(
+        analysis,
+        granularity=granularity,
+        depth=depth,
+        min_score=min_score,
+        max_owners=max_owners,
+        use_emails=emails,
+    )
+
+    if as_json:
+        result = {
+            "entries": [
+                {"pattern": pat, "owners": owners}
+                for pat, owners in entries
+            ],
+        }
+        print(json.dumps(result, indent=2))
+    else:
+        print(format_codeowners(entries, header=not no_header))
+
+
+@main.command()
+@click.pass_context
+def teams(ctx: click.Context) -> None:
+    """Show expertise grouped by team (email domain).
+
+    Groups authors by their email domain to show which teams
+    own which parts of the codebase. Useful for understanding
+    cross-team dependencies and organizational bus factor.
+
+    Example: git-who teams
+    """
+    path = ctx.obj["path"]
+    as_json = ctx.obj["json"]
+    since = ctx.obj["since"]
+    ignore = ctx.obj["ignore"]
+    console = Console(stderr=True) if as_json else Console()
+
+    try:
+        analysis = analyze_repo(path, since=since, ignore=ignore)
+    except RuntimeError as e:
+        console.print(f"[red]Error:[/] {e}")
+        sys.exit(1)
+
+    # Group authors by email domain
+    from collections import defaultdict
+    team_scores: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
+    team_members: dict[str, set[str]] = defaultdict(set)
+    team_files: dict[str, set[str]] = defaultdict(set)
+
+    for filepath, ownership in analysis.files.items():
+        for expert in ownership.experts:
+            email = analysis.author_emails.get(expert.author, "unknown@unknown")
+            domain = email.split("@")[-1] if "@" in email else "unknown"
+            team_scores[domain][filepath] += expert.score
+            team_members[domain].add(expert.author)
+            team_files[domain].add(filepath)
+
+    teams_data = []
+    for domain in sorted(team_scores.keys()):
+        total_score = sum(team_scores[domain].values())
+        teams_data.append({
+            "team": domain,
+            "members": sorted(team_members[domain]),
+            "member_count": len(team_members[domain]),
+            "files_touched": len(team_files[domain]),
+            "total_score": round(total_score, 2),
+        })
+
+    teams_data.sort(key=lambda t: t["total_score"], reverse=True)
+
+    if as_json:
+        print(json.dumps({"teams": teams_data}, indent=2))
+    else:
+        display_teams(console, teams_data)

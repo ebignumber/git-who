@@ -18,10 +18,37 @@ from git_who.analyzer import (
     parse_git_log,
     find_hotspots,
     aggregate_directories,
+    generate_codeowners,
+    format_codeowners,
+    _matches_any_pattern,
     FileOwnership,
     Hotspot,
     DirectoryExpertise,
+    RepoAnalysis,
 )
+
+
+# --- Unit tests for pattern matching ---
+
+
+class TestPatternMatching:
+    def test_exact_match(self):
+        assert _matches_any_pattern("vendor/lib.js", ["vendor/*"])
+
+    def test_extension_match(self):
+        assert _matches_any_pattern("src/app.min.js", ["*.min.js"])
+
+    def test_no_match(self):
+        assert not _matches_any_pattern("src/main.py", ["*.js"])
+
+    def test_nested_path(self):
+        assert _matches_any_pattern("deep/nested/vendor/lib.js", ["vendor/*"])
+
+    def test_multiple_patterns(self):
+        assert _matches_any_pattern("file.min.css", ["*.min.js", "*.min.css"])
+
+    def test_empty_patterns(self):
+        assert not _matches_any_pattern("anything.py", [])
 
 
 # --- Unit tests for scoring ---
@@ -334,17 +361,22 @@ class TestAnalyzeRepo:
 
 class TestParseGitLog:
     def test_basic_parsing(self, git_repo):
-        data = parse_git_log(git_repo)
+        data, author_emails = parse_git_log(git_repo)
         assert len(data) > 0
         assert "main.py" in data
 
     def test_author_data(self, git_repo):
-        data = parse_git_log(git_repo)
+        data, author_emails = parse_git_log(git_repo)
         # Alice created main.py
         assert "Alice" in data["main.py"]
         alice_main = data["main.py"]["Alice"]
         assert alice_main.commits >= 1
         assert alice_main.lines_added > 0
+
+    def test_author_emails(self, git_repo):
+        data, author_emails = parse_git_log(git_repo)
+        assert "Alice" in author_emails
+        assert author_emails["Alice"] == "alice@test.com"
 
 
 class TestHotspots:
@@ -493,9 +525,34 @@ class TestDirectoryAggregation:
         assert len(dirs) == 1
         assert dirs[0].directory == "."
 
+    def test_depth_two(self):
+        """Depth 2 groups by two levels of directories."""
+        from git_who.analyzer import RepoAnalysis
+        analysis = RepoAnalysis(
+            path="/test",
+            files={
+                "src/api/v1.py": FileOwnership(
+                    file="src/api/v1.py", bus_factor=1,
+                    experts=[FileExpertise(author="Alice", file="src/api/v1.py", score=10, commits=5)],
+                ),
+                "src/api/v2.py": FileOwnership(
+                    file="src/api/v2.py", bus_factor=1,
+                    experts=[FileExpertise(author="Bob", file="src/api/v2.py", score=8, commits=4)],
+                ),
+                "src/auth/login.py": FileOwnership(
+                    file="src/auth/login.py", bus_factor=1,
+                    experts=[FileExpertise(author="Alice", file="src/auth/login.py", score=5, commits=3)],
+                ),
+            },
+            total_files=3,
+        )
+        dirs = aggregate_directories(analysis, depth=2)
+        dir_names = [d.directory for d in dirs]
+        assert "src/api" in dir_names
+        assert "src/auth" in dir_names
+
     def test_directory_bus_factor(self):
         """Directory bus factor is computed from aggregated scores."""
-        from git_who.analyzer import RepoAnalysis
         analysis = RepoAnalysis(
             path="/test",
             files={
@@ -513,3 +570,144 @@ class TestDirectoryAggregation:
         dirs = aggregate_directories(analysis, depth=1)
         src = next(d for d in dirs if d.directory == "src")
         assert src.bus_factor == 1  # All expertise from one person
+
+
+class TestCodeowners:
+    def _make_analysis(self):
+        """Helper to create a test analysis for CODEOWNERS tests."""
+        return RepoAnalysis(
+            path="/test",
+            files={
+                "src/api/server.py": FileOwnership(
+                    file="src/api/server.py", bus_factor=2,
+                    experts=[
+                        FileExpertise(author="Alice", file="src/api/server.py", score=20, commits=10),
+                        FileExpertise(author="Bob", file="src/api/server.py", score=15, commits=8),
+                    ],
+                ),
+                "src/api/routes.py": FileOwnership(
+                    file="src/api/routes.py", bus_factor=1,
+                    experts=[
+                        FileExpertise(author="Alice", file="src/api/routes.py", score=18, commits=9),
+                    ],
+                ),
+                "src/core/engine.py": FileOwnership(
+                    file="src/core/engine.py", bus_factor=1,
+                    experts=[
+                        FileExpertise(author="Charlie", file="src/core/engine.py", score=30, commits=15),
+                        FileExpertise(author="Alice", file="src/core/engine.py", score=5, commits=2),
+                    ],
+                ),
+                "tests/test_api.py": FileOwnership(
+                    file="tests/test_api.py", bus_factor=1,
+                    experts=[
+                        FileExpertise(author="Bob", file="tests/test_api.py", score=12, commits=6),
+                    ],
+                ),
+                "README.md": FileOwnership(
+                    file="README.md", bus_factor=2,
+                    experts=[
+                        FileExpertise(author="Alice", file="README.md", score=8, commits=4),
+                        FileExpertise(author="Bob", file="README.md", score=7, commits=3),
+                    ],
+                ),
+            },
+            author_emails={
+                "Alice": "alice@example.com",
+                "Bob": "bob@example.com",
+                "Charlie": "charlie@example.com",
+            },
+            total_files=5,
+            total_authors=3,
+        )
+
+    def test_directory_granularity(self):
+        """Directory mode groups files by top-level directory."""
+        analysis = self._make_analysis()
+        entries = generate_codeowners(analysis, granularity="directory", depth=1)
+        patterns = [pat for pat, _ in entries]
+        assert any("src" in p for p in patterns)
+        assert any("tests" in p for p in patterns)
+
+    def test_file_granularity(self):
+        """File mode generates one entry per file."""
+        analysis = self._make_analysis()
+        entries = generate_codeowners(analysis, granularity="file")
+        assert len(entries) == 5
+        patterns = [pat for pat, _ in entries]
+        assert "/src/api/server.py" in patterns
+        assert "/README.md" in patterns
+
+    def test_max_owners_limits(self):
+        """Max owners limits the number of owners per entry."""
+        analysis = self._make_analysis()
+        entries = generate_codeowners(analysis, granularity="file", max_owners=1)
+        for _, owners in entries:
+            assert len(owners) <= 1
+
+    def test_min_score_filters(self):
+        """Min score filters out low-scoring experts."""
+        analysis = self._make_analysis()
+        entries = generate_codeowners(analysis, granularity="file", min_score=10)
+        # README.md experts have scores 8 and 7, both below 10
+        readme_entry = [e for e in entries if "README.md" in e[0]]
+        assert len(readme_entry) == 0
+
+    def test_email_mode(self):
+        """Email mode uses email addresses instead of names."""
+        analysis = self._make_analysis()
+        entries = generate_codeowners(analysis, granularity="file", use_emails=True)
+        all_owners = [o for _, owners in entries for o in owners]
+        assert "alice@example.com" in all_owners
+        assert "Alice" not in all_owners
+
+    def test_depth_two(self):
+        """Depth 2 creates more specific directory rules."""
+        analysis = self._make_analysis()
+        entries = generate_codeowners(analysis, granularity="directory", depth=2)
+        patterns = [pat for pat, _ in entries]
+        assert any("src/api" in p for p in patterns)
+        assert any("src/core" in p for p in patterns)
+
+    def test_format_codeowners_header(self):
+        """Format includes header by default."""
+        entries = [("/src/", ["Alice", "Bob"]), ("/tests/", ["Charlie"])]
+        output = format_codeowners(entries)
+        assert "auto-generated by git-who" in output
+        assert "/src/" in output
+        assert "Alice Bob" in output
+
+    def test_format_codeowners_no_header(self):
+        """Format can omit header."""
+        entries = [("/src/", ["Alice"])]
+        output = format_codeowners(entries, header=False)
+        assert "auto-generated" not in output
+        assert "/src/" in output
+
+    def test_file_entries_sorted(self):
+        """File entries are sorted alphabetically."""
+        analysis = self._make_analysis()
+        entries = generate_codeowners(analysis, granularity="file")
+        patterns = [pat for pat, _ in entries]
+        assert patterns == sorted(patterns)
+
+    def test_top_expert_is_first_owner(self):
+        """The highest-scoring expert appears first in owners list."""
+        analysis = self._make_analysis()
+        entries = generate_codeowners(analysis, granularity="file")
+        engine_entry = next(e for e in entries if "engine.py" in e[0])
+        assert engine_entry[1][0] == "Charlie"  # Score 30 > Alice's 5
+
+    def test_integration_with_real_repo(self, git_repo):
+        """CODEOWNERS works end-to-end on a real git repo."""
+        analysis = analyze_repo(git_repo)
+        entries = generate_codeowners(analysis, granularity="file")
+        assert len(entries) > 0
+        output = format_codeowners(entries)
+        assert "git-who" in output
+
+    def test_integration_directory_mode(self, git_repo):
+        """Directory CODEOWNERS works end-to-end."""
+        analysis = analyze_repo(git_repo)
+        entries = generate_codeowners(analysis, granularity="directory")
+        assert len(entries) > 0

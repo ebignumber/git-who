@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "git-who"
-version = "0.2.0"
+version = "0.3.0"
 description = "Find out who really knows your code. Expertise analysis, bus factor, and reviewer suggestions from git history."
 readme = "README.md"
 license = "MIT"

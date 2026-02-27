@@ -76,6 +76,7 @@ class RepoAnalysis:
     path: str
     files: dict[str, FileOwnership] = field(default_factory=dict)
     authors: dict[str, AuthorSummary] = field(default_factory=dict)
+    author_emails: dict[str, str] = field(default_factory=dict)
     bus_factor: int = 0
     total_files: int = 0
     total_authors: int = 0
@@ -94,30 +95,51 @@ def run_git(args: list[str], cwd: str) -> str:
     return result.stdout
 
 
-def parse_git_log(cwd: str, paths: list[str] | None = None) -> dict[str, dict[str, FileExpertise]]:
+def _matches_any_pattern(filepath: str, patterns: list[str]) -> bool:
+    """Check if a filepath matches any of the given glob patterns."""
+    from fnmatch import fnmatch
+    return any(fnmatch(filepath, pat) or fnmatch(filepath, f"*/{pat}") for pat in patterns)
+
+
+def parse_git_log(
+    cwd: str,
+    paths: list[str] | None = None,
+    since: str | None = None,
+    ignore: list[str] | None = None,
+) -> dict[str, dict[str, FileExpertise]]:
     """Parse git log to extract per-file, per-author contribution data.
+
+    Args:
+        cwd: Path to the git repository.
+        paths: Optional list of paths to analyze.
+        since: Optional date string (e.g., "6 months ago", "2024-01-01").
+        ignore: Optional list of glob patterns to exclude.
 
     Returns: {filepath: {author: FileExpertise}}
     """
     # Use git log with numstat to get per-file line counts per commit
     cmd = [
         "log",
-        "--format=COMMIT:%H|%aN|%aI",
+        "--format=COMMIT:%H|%aN|%aE|%aI",
         "--numstat",
         "--no-merges",
         "--diff-filter=ACDMR",
     ]
+    if since:
+        cmd.extend(["--since", since])
     if paths:
         cmd.append("--")
         cmd.extend(paths)
 
     raw = run_git(cmd, cwd)
     if not raw.strip():
-        return {}
+        return {}, {}
 
     data: dict[str, dict[str, FileExpertise]] = defaultdict(lambda: defaultdict(lambda: FileExpertise("", "")))
     current_author = ""
+    current_email = ""
     current_date: datetime | None = None
+    author_emails: dict[str, str] = {}
 
     for line in raw.splitlines():
         line = line.strip()
@@ -125,10 +147,12 @@ def parse_git_log(cwd: str, paths: list[str] | None = None) -> dict[str, dict[st
             continue
 
         if line.startswith("COMMIT:"):
-            parts = line[7:].split("|", 2)
-            if len(parts) >= 3:
+            parts = line[7:].split("|", 3)
+            if len(parts) >= 4:
                 current_author = parts[1]
-                current_date = datetime.fromisoformat(parts[2])
+                current_email = parts[2]
+                current_date = datetime.fromisoformat(parts[3])
+                author_emails[current_author] = current_email
         else:
             # numstat line: added\tdeleted\tfilepath
             match = re.match(r"^(\d+|-)\t(\d+|-)\t(.+)$", line)
@@ -153,6 +177,10 @@ def parse_git_log(cwd: str, paths: list[str] | None = None) -> dict[str, dict[st
                         else:
                             filepath = new_name
 
+                # Apply ignore patterns
+                if ignore and _matches_any_pattern(filepath, ignore):
+                    continue
+
                 fe = data[filepath][current_author]
                 fe.author = current_author
                 fe.file = filepath
@@ -166,7 +194,7 @@ def parse_git_log(cwd: str, paths: list[str] | None = None) -> dict[str, dict[st
                     if fe.last_commit is None or current_date > fe.last_commit:
                         fe.last_commit = current_date
 
-    return data
+    return data, author_emails
 
 
 def compute_expertise_score(fe: FileExpertise, now: datetime | None = None) -> float:
@@ -251,6 +279,8 @@ def analyze_repo(
     path: str,
     target_paths: list[str] | None = None,
     now: datetime | None = None,
+    since: str | None = None,
+    ignore: list[str] | None = None,
 ) -> RepoAnalysis:
     """Analyze a git repository for code expertise.
 
@@ -258,6 +288,8 @@ def analyze_repo(
         path: Path to the git repository.
         target_paths: Optional list of paths within the repo to analyze.
         now: Reference time for recency calculations.
+        since: Optional date string to limit history (e.g., "6 months ago").
+        ignore: Optional list of glob patterns to exclude files.
     """
     if now is None:
         now = datetime.now(timezone.utc)
@@ -266,7 +298,7 @@ def analyze_repo(
     run_git(["rev-parse", "--git-dir"], path)
 
     # Parse git log
-    raw_data = parse_git_log(path, target_paths)
+    raw_data, author_emails = parse_git_log(path, target_paths, since=since, ignore=ignore)
 
     analysis = RepoAnalysis(path=path)
     author_file_counts: dict[str, int] = defaultdict(int)
@@ -331,6 +363,7 @@ def analyze_repo(
 
     analysis.total_files = len(analysis.files)
     analysis.total_authors = len(analysis.authors)
+    analysis.author_emails = author_emails
 
     return analysis
 
@@ -385,6 +418,109 @@ def find_hotspots(
     # Sort by churn_rank descending (most churned first)
     hotspots.sort(key=lambda h: h.churn_rank, reverse=True)
     return hotspots
+
+
+def generate_codeowners(
+    analysis: RepoAnalysis,
+    granularity: str = "directory",
+    depth: int = 1,
+    min_score: float = 0.0,
+    max_owners: int = 3,
+    use_emails: bool = False,
+) -> list[tuple[str, list[str]]]:
+    """Generate CODEOWNERS entries from expertise analysis.
+
+    Args:
+        analysis: RepoAnalysis result.
+        granularity: "file" for per-file rules or "directory" for per-directory.
+        depth: Directory depth for directory-level granularity.
+        min_score: Minimum expertise score to qualify as owner.
+        max_owners: Maximum owners per entry.
+        use_emails: Use email addresses instead of author names.
+
+    Returns: list of (pattern, [owners]) tuples, ordered from most to least specific.
+    """
+    entries: list[tuple[str, list[str]]] = []
+
+    if granularity == "file":
+        for filepath, ownership in sorted(analysis.files.items()):
+            owners = []
+            for expert in ownership.experts[:max_owners]:
+                if expert.score < min_score:
+                    break
+                if use_emails:
+                    email = analysis.author_emails.get(expert.author, "")
+                    if email:
+                        owners.append(email)
+                else:
+                    # GitHub CODEOWNERS uses @username; we use author names
+                    # since we can't map to GitHub usernames automatically
+                    owners.append(expert.author)
+            if owners:
+                entries.append((f"/{filepath}", owners))
+    else:
+        # Directory-level granularity
+        dir_scores: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
+
+        for filepath, ownership in analysis.files.items():
+            parts = Path(filepath).parts
+            if len(parts) <= depth:
+                directory = str(Path(*parts[:-1])) if len(parts) > 1 else "."
+            else:
+                directory = str(Path(*parts[:depth]))
+
+            for expert in ownership.experts:
+                dir_scores[directory][expert.author] += expert.score
+
+        for directory in sorted(dir_scores.keys()):
+            scores = dir_scores[directory]
+            sorted_experts = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+            owners = []
+            for author, score in sorted_experts[:max_owners]:
+                if score < min_score:
+                    break
+                if use_emails:
+                    email = analysis.author_emails.get(author, "")
+                    if email:
+                        owners.append(email)
+                else:
+                    owners.append(author)
+            if owners:
+                pattern = f"/{directory}/" if directory != "." else "*"
+                entries.append((pattern, owners))
+
+    return entries
+
+
+def format_codeowners(
+    entries: list[tuple[str, list[str]]],
+    header: bool = True,
+) -> str:
+    """Format CODEOWNERS entries as a file content string.
+
+    Args:
+        entries: list of (pattern, [owners]) from generate_codeowners.
+        header: Include a generated-by header comment.
+
+    Returns: CODEOWNERS file content string.
+    """
+    lines = []
+    if header:
+        lines.append("# This file was auto-generated by git-who")
+        lines.append("# https://github.com/trinarymage/git-who")
+        lines.append("#")
+        lines.append("# To regenerate: git-who codeowners > .github/CODEOWNERS")
+        lines.append("")
+
+    # Find maximum pattern width for alignment
+    max_pat = max((len(pat) for pat, _ in entries), default=0)
+
+    for pattern, owners in entries:
+        owner_str = " ".join(owners)
+        lines.append(f"{pattern:<{max_pat}}  {owner_str}")
+
+    lines.append("")
+    return "\n".join(lines)
 
 
 def aggregate_directories(
