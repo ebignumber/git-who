@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "git-who"
-version = "0.12.0"
+version = "0.12.1"
 description = "Find out who really knows your code. Expertise analysis, bus factor, and reviewer suggestions from git history."
 readme = "README.md"
 license = "MIT"
@@ -12,7 +12,7 @@ requires-python = ">=3.9"
 authors = [
     { name = "git-who contributors" },
 ]
-keywords = ["git", "code-ownership", "bus-factor", "expertise", "cli", "developer-tools"]
+keywords = ["git", "code-ownership", "bus-factor", "expertise", "cli", "developer-tools", "code-review", "codeowners", "treemap", "hotspots"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
@@ -25,19 +25,25 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Version Control :: Git",
+    "Topic :: Software Development :: Quality Assurance",
 ]
 dependencies = [
     "click>=8.0",
     "rich>=13.0",
 ]
 
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
 [project.scripts]
 git-who = "git_who.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/trinarymage/git-who"
+Homepage = "https://trinarymage.github.io/git-who/"
+Documentation = "https://github.com/trinarymage/git-who#readme"
 Repository = "https://github.com/trinarymage/git-who"
 Issues = "https://github.com/trinarymage/git-who/issues"
+Changelog = "https://github.com/trinarymage/git-who/blob/main/CHANGELOG.md"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

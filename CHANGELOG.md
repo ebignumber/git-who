@@ -2,6 +2,18 @@
 
 All notable changes to git-who will be documented in this file.
 
+## [0.12.1] - 2026-02-27
+
+### Added
+- GitHub Pages deployment workflow for live demos
+- `git-who init` — Generate sample `.gitwho.yml` config file
+- `.gitwho.yml` config file support with all CLI options
+- Improved PyPI metadata (keywords, classifiers, URLs, optional deps)
+
+### Changed
+- Homepage URL now points to GitHub Pages site
+- Test count: 173 (all passing)
+
 ## [0.12.0] - 2026-02-27
 
 ### Added
