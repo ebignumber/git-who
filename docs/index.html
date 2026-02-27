@@ -24,9 +24,10 @@ header h1{font-size:2.5em;margin-bottom:10px;letter-spacing:-0.02em}
 header p{font-size:1.2em;color:var(--dim);max-width:600px;margin:0 auto 30px}
 .badges{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:30px}
 .badges img{height:22px}
+.cta-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
 .cta{display:inline-block;background:var(--green);color:#000;font-weight:600;padding:12px 28px;border-radius:8px;font-size:1.1em;transition:opacity .2s}
 .cta:hover{opacity:.85;text-decoration:none}
-.cta-secondary{background:var(--surface);color:var(--text);border:1px solid var(--border);margin-left:12px}
+.cta-secondary{background:var(--surface);color:var(--text);border:1px solid var(--border)}
 .terminal{background:#0d1117;border:1px solid var(--border);border-radius:12px;padding:20px 24px;font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:13px;line-height:1.7;overflow-x:auto;margin:24px 0;position:relative}
 .terminal::before{content:'';position:absolute;top:12px;left:16px;width:12px;height:12px;border-radius:50%;background:#f85149;box-shadow:20px 0 0 #d29922,40px 0 0 #3fb950}
 .terminal pre{margin-top:16px;white-space:pre;color:var(--text)}
@@ -49,7 +50,23 @@ section p{color:var(--dim);margin-bottom:16px}
 .check{color:var(--green)}
 .cross{color:var(--dim)}
 footer{text-align:center;padding:40px 0;color:var(--dim);font-size:.9em;border-top:1px solid var(--border)}
-@media(max-width:600px){header h1{font-size:1.8em}header p{font-size:1em}.terminal{font-size:11px;padding:14px 16px}}
+
+/* Animated terminal */
+.anim-terminal{background:#0d1117;border:1px solid var(--border);border-radius:12px;padding:0;font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:13px;line-height:1.7;overflow:hidden;margin:24px 0;position:relative}
+.anim-titlebar{background:#161b22;border-bottom:1px solid var(--border);padding:8px 16px;display:flex;align-items:center;gap:8px}
+.anim-dot{width:12px;height:12px;border-radius:50%;display:inline-block}
+.anim-dot.r{background:#f85149}.anim-dot.y{background:#d29922}.anim-dot.g{background:#3fb950}
+.anim-titlebar span{color:var(--dim);font-size:12px;margin-left:8px}
+.anim-body{padding:16px 20px;min-height:380px}
+.anim-line{opacity:0;transform:translateY(4px);white-space:pre}
+.anim-line.visible{opacity:1;transform:translateY(0);transition:opacity .15s ease,transform .15s ease}
+.anim-cursor{display:inline-block;width:8px;height:16px;background:var(--green);animation:blink 1s step-end infinite;vertical-align:text-bottom;margin-left:1px}
+@keyframes blink{50%{opacity:0}}
+.typed-cmd{color:var(--green);overflow:hidden;display:inline;border-right:none}
+.hero-stat{display:inline-block;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:4px 12px;margin:4px;font-size:0.95em}
+.hero-stat .val{font-weight:700;color:var(--accent)}
+
+@media(max-width:600px){header h1{font-size:1.8em}header p{font-size:1em}.anim-body{font-size:11px;padding:12px 14px;min-height:340px}}
 </style>
 </head>
 <body>
@@ -65,36 +82,24 @@ footer{text-align:center;padding:40px 0;color:var(--dim);font-size:.9em;border-t
 <img alt="Python 3.9+" src="https://img.shields.io/badge/python-3.9+-blue.svg">
 <img alt="Stars" src="https://img.shields.io/github/stars/trinarymage/git-who?style=social">
 </div>
+<div class="cta-row">
 <a class="cta" href="https://github.com/trinarymage/git-who">View on GitHub</a>
 <a class="cta cta-secondary" href="#install">Install Now</a>
-<a class="cta cta-secondary" href="demo-flask-map.html">Live Demo: Flask Treemap</a>
+<a class="cta cta-secondary" href="demo-flask-map.html">Live Demo</a>
+</div>
 </div>
 </header>
 
 <section>
 <div class="container">
-<h2>Try <code>git-who me</code> &mdash; your personal expertise profile</h2>
-<p>See what files depend on YOU. Run it on your company's repo &mdash; you might be surprised.</p>
-<div class="terminal">
-<pre><span class="prompt">$</span> git-who me
-
-<span class="comment">╭──────────────────── Alice  &lt;alice@company.com&gt; ────────────────────╮</span>
-<span class="comment">│</span>   Files touched: 87/142   |   Files owned: 52   |   Sole expert: 23
-<span class="comment">│</span>   Total commits: 340   |   Lines: 24,800   |   Expertise share: <span class="highlight">48.2%</span>
-<span class="comment">╰──────────────────────── Your Expertise Profile ────────────────────╯</span>
-
-  <span class="danger">If you left tomorrow, 23 file(s) would have no expert.</span>
-  <span class="danger">That's 16% of the codebase at critical risk.</span>
-
-  <span class="danger">!</span> You are the SOLE expert on 23 file(s) (16% of the codebase).
-  * You are the top expert on 52 file(s) (37% of the codebase).
-  <span class="danger">!</span> You hold <span class="highlight">48%</span> of the total codebase expertise.
-
-       Your Top Files by Expertise
-  # | File                     | Score | Share
-  1 | src/payment/billing.py   |  28.3 | <span class="danger">100%</span> ████████████████████
-  2 | src/core/engine.py       |  24.1 | <span class="danger"> 89%</span> █████████████████
-  3 | src/auth/middleware.py   |  19.4 | <span class="highlight"> 72%</span> ██████████████</pre>
+<h2>Try <code>git-who me</code> &mdash; see YOUR impact</h2>
+<p>Run it on your company's repo. You might be surprised how much depends on you.</p>
+<div class="anim-terminal" id="demo1">
+<div class="anim-titlebar">
+<span class="anim-dot r"></span><span class="anim-dot y"></span><span class="anim-dot g"></span>
+<span>~/your-project</span>
+</div>
+<div class="anim-body" id="demo1-body"></div>
 </div>
 </div>
 </section>
@@ -102,23 +107,14 @@ footer{text-align:center;padding:40px 0;color:var(--dim);font-size:.9em;border-t
 <section>
 <div class="container">
 <h2>Run it on Flask (69k+ stars) &mdash; the results are alarming</h2>
-<div class="terminal">
-<pre><span class="prompt">$</span> git-who health
-
-<span class="comment">╭─────────────────── Knowledge Health Grade ───────────────────╮</span>
-<span class="comment">│</span>   <span class="danger">F</span>    (19.2/100)
-<span class="comment">╰──────────── How well is knowledge distributed? ──────────────╯</span>
-  Bus Factor                 <span class="danger">1</span>
-  Files Analyzed             266
-  Contributors               37
-  Files at Risk (BF=1)       <span class="danger">143 (54%)</span>
-  Hotspots                   129
-  Knowledge Concentration    <span class="danger">88%</span> held by top contributor
-
-  <span class="danger">CRITICAL: Bus factor is 1</span> &mdash; a single departure could cripple the project
-  143 files (54%) have bus factor = 1</pre>
+<div class="anim-terminal" id="demo2">
+<div class="anim-titlebar">
+<span class="anim-dot r"></span><span class="anim-dot y"></span><span class="anim-dot g"></span>
+<span>~/flask</span>
 </div>
-<p><strong>37 contributors, but 88% of expertise held by one person.</strong> git-who surfaces this in seconds.</p>
+<div class="anim-body" id="demo2-body"></div>
+</div>
+<p><strong>37 contributors, but 88% of expertise held by one person.</strong> git-who surfaces this in seconds. <a href="demo-flask-map.html">See the interactive treemap &rarr;</a></p>
 </div>
 </section>
 
@@ -185,7 +181,7 @@ footer{text-align:center;padding:40px 0;color:var(--dim);font-size:.9em;border-t
 <section>
 <div class="container">
 <h2>Live Demos</h2>
-<p>These are real outputs from running git-who on <a href="https://github.com/pallets/flask">Flask</a> (69k+ stars). No cherry-picking — just raw analysis.</p>
+<p>Real outputs from running git-who on <a href="https://github.com/pallets/flask">Flask</a> (69k+ stars). No cherry-picking.</p>
 <div class="features">
 <div class="feature">
 <h3><a href="demo-flask-map.html">Interactive Ownership Treemap</a></h3>
@@ -193,7 +189,7 @@ footer{text-align:center;padding:40px 0;color:var(--dim);font-size:.9em;border-t
 </div>
 <div class="feature">
 <h3><a href="demo-flask-report.html">Knowledge Health Report</a></h3>
-<p>Full health analysis: grade, contributors, hotspots, bus factor distribution — all in one shareable page.</p>
+<p>Full health analysis: grade, contributors, hotspots, bus factor distribution &mdash; all in one shareable page.</p>
 </div>
 </div>
 </div>
@@ -221,9 +217,113 @@ footer{text-align:center;padding:40px 0;color:var(--dim);font-size:.9em;border-t
 
 <footer>
 <div class="container">
-<p>MIT License &middot; <a href="https://github.com/trinarymage/git-who">GitHub</a></p>
+<p>MIT License &middot; <a href="https://github.com/trinarymage/git-who">GitHub</a> &middot; <a href="https://github.com/trinarymage/git-who/issues">Issues</a></p>
 </div>
 </footer>
+
+<script>
+// Animated terminal demos
+function animateTerminal(bodyId, lines, startDelay) {
+  const body = document.getElementById(bodyId);
+  if (!body) return;
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        observer.disconnect();
+        setTimeout(() => runAnimation(body, lines), startDelay || 200);
+      }
+    });
+  }, { threshold: 0.3 });
+  observer.observe(body);
+}
+
+function runAnimation(body, lines) {
+  body.innerHTML = '';
+  let delay = 0;
+  lines.forEach((item, i) => {
+    if (item.type === 'cmd') {
+      delay += item.pause || 300;
+      const cmdDelay = delay;
+      const lineEl = document.createElement('div');
+      lineEl.className = 'anim-line';
+      lineEl.innerHTML = '<span class="prompt">$</span> <span class="typed-cmd"></span><span class="anim-cursor"></span>';
+      body.appendChild(lineEl);
+      setTimeout(() => {
+        lineEl.classList.add('visible');
+        typeText(lineEl.querySelector('.typed-cmd'), item.text, 40, () => {
+          const cursor = lineEl.querySelector('.anim-cursor');
+          if (cursor) cursor.remove();
+        });
+      }, cmdDelay);
+      delay += item.text.length * 40 + 200;
+    } else {
+      delay += item.pause || 60;
+      const lineDelay = delay;
+      const lineEl = document.createElement('div');
+      lineEl.className = 'anim-line';
+      lineEl.innerHTML = item.html || escapeHtml(item.text || '');
+      body.appendChild(lineEl);
+      setTimeout(() => lineEl.classList.add('visible'), lineDelay);
+    }
+  });
+}
+
+function typeText(el, text, speed, done) {
+  let i = 0;
+  function tick() {
+    if (i < text.length) {
+      el.textContent += text[i++];
+      setTimeout(tick, speed + (Math.random() * 20 - 10));
+    } else if (done) done();
+  }
+  tick();
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// Demo 1: git-who me
+animateTerminal('demo1-body', [
+  {type:'cmd', text:'git-who me', pause: 600},
+  {type:'out', html:'', pause: 400},
+  {type:'out', html:'<span class="comment">\u256d\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 Alice  &lt;alice@company.com&gt; \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e</span>'},
+  {type:'out', html:'<span class="comment">\u2502</span>   Files touched: 87/142   |   Files owned: 52   |   Sole expert: 23'},
+  {type:'out', html:'<span class="comment">\u2502</span>   Total commits: 340   |   Lines: 24,800   |   Expertise share: <span class="highlight">48.2%</span>'},
+  {type:'out', html:'<span class="comment">\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 Your Expertise Profile \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f</span>'},
+  {type:'out', html:'', pause: 200},
+  {type:'out', html:'  <span class="danger">If you left tomorrow, 23 file(s) would have no expert.</span>', pause: 150},
+  {type:'out', html:'  <span class="danger">That\'s 16% of the codebase at critical risk.</span>'},
+  {type:'out', html:''},
+  {type:'out', html:'  <span class="danger">!</span> You are the SOLE expert on 23 file(s) (16% of the codebase).'},
+  {type:'out', html:'  * You are the top expert on 52 file(s) (37% of the codebase).'},
+  {type:'out', html:'  <span class="danger">!</span> You hold <span class="highlight">48%</span> of the total codebase expertise.'},
+  {type:'out', html:'', pause: 150},
+  {type:'out', html:'       Your Top Files by Expertise'},
+  {type:'out', html:'  # | File                     | Score | Share'},
+  {type:'out', html:'  1 | src/payment/billing.py   |  28.3 | <span class="danger">100%</span> \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588'},
+  {type:'out', html:'  2 | src/core/engine.py       |  24.1 | <span class="danger"> 89%</span> \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588'},
+  {type:'out', html:'  3 | src/auth/middleware.py   |  19.4 | <span class="highlight"> 72%</span> \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588'},
+], 200);
+
+// Demo 2: git-who health
+animateTerminal('demo2-body', [
+  {type:'cmd', text:'git-who health', pause: 600},
+  {type:'out', html:'', pause: 400},
+  {type:'out', html:'<span class="comment">\u256d\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 Knowledge Health Grade \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e</span>'},
+  {type:'out', html:'<span class="comment">\u2502</span>   <span class="danger" style="font-size:1.3em;font-weight:bold">F</span>    (19.2/100)'},
+  {type:'out', html:'<span class="comment">\u2570\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 How well is knowledge distributed? \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f</span>'},
+  {type:'out', html:'  Bus Factor                 <span class="danger">1</span>', pause: 120},
+  {type:'out', html:'  Files Analyzed             266'},
+  {type:'out', html:'  Contributors               37'},
+  {type:'out', html:'  Files at Risk (BF=1)       <span class="danger">143 (54%)</span>'},
+  {type:'out', html:'  Hotspots                   129'},
+  {type:'out', html:'  Knowledge Concentration    <span class="danger">88%</span> held by top contributor'},
+  {type:'out', html:'', pause: 200},
+  {type:'out', html:'  <span class="danger">CRITICAL: Bus factor is 1</span> \u2014 a single departure could cripple the project'},
+  {type:'out', html:'  143 files (54%) have bus factor = 1'},
+], 200);
+</script>
 
 </body>
 </html>

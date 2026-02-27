@@ -60,6 +60,18 @@ Here's what git-who finds when you run it on [Flask](https://github.com/pallets/
 pip install git+https://github.com/trinarymage/git-who.git
 ```
 
+With [uv](https://docs.astral.sh/uv/) (recommended):
+
+```bash
+uv pip install git+https://github.com/trinarymage/git-who.git
+```
+
+Or try it without installing (requires uv):
+
+```bash
+uvx --from "git+https://github.com/trinarymage/git-who.git" git-who health
+```
+
 Or clone and install locally:
 
 ```bash
@@ -710,7 +722,7 @@ Use git-who as a [pre-commit](https://pre-commit.com/) hook to monitor bus facto
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/trinarymage/git-who
-    rev: v0.12.0  # or pin to latest release
+    rev: v0.12.1  # or pin to latest release
     hooks:
       - id: git-who-bus-factor
 ```
